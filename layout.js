@@ -19,7 +19,7 @@ export const tables = [
 ];
 function point(px,py) { const [x,z] = planPoint(px,py); return {x,z}; }
 function chairPoints(points) { return points.map(([x,z])=>point(x,z)); }
-export const columns = [point(289,510),point(578,510)];
+export const columns = [point(289,510)];
 export const longTable = {x:2.62,z:4.4,width:2.64,depth:.82,seats:10};
 export const headTable = {x:1.02,z:7.24,width:.82,depth:1.86,seats:2};
 export const SEATS = tables.reduce((n,t)=>n+t.seats,0)+longTable.seats+headTable.seats;

@@ -1,8 +1,8 @@
 import * as THREE from './vendor/three.module.min.js';
 import {Reflector} from './vendor/Reflector.js';
-import {addMusicStage} from './venue-details.js?v=20261116-4';
-import {upholsteredShell,shellSeam,cushion,petal,leafGeometry,foldedNapkin,pooledFabric,gatheredTableFront,suspendedSwag} from './detail-geometry.js?v=20261116-4';
-import {boundary,HEIGHT,tables,columns,longTable,headTable,SEATS} from './layout.js?v=20261116-4';
+import {addMusicStage} from './venue-details.js?v=20261116-5';
+import {upholsteredShell,shellSeam,cushion,petal,leafGeometry,foldedNapkin,pooledFabric,gatheredTableFront,suspendedSwag} from './detail-geometry.js?v=20261116-5';
+import {boundary,HEIGHT,tables,columns,longTable,headTable,SEATS} from './layout.js?v=20261116-5';
 
 export const palettes={
  reference:{name:'По фотографии',cloth:'#eadbc2',napkin:'#4b3024',backdrop:'#eee0c8',drape:'#4c2d1e',pink:'#f2e9df',green:'#e7e6d8'},
