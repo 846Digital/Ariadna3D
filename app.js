@@ -1,4 +1,4 @@
-import {boundary,tables,columns,longTable,headTable,views,SEATS,canStand} from './layout.js?v=20261116-2';
+import {boundary,tables,columns,longTable,headTable,views,SEATS,canStand} from './layout.js?v=20261116-3';
 
 const $=id=>document.getElementById(id),canvas=$('scene');
 const coarse=matchMedia('(pointer:coarse)').matches,reduced=matchMedia('(prefers-reduced-motion:reduce)').matches;
@@ -50,7 +50,7 @@ const references={
  olive:['preview-olive.webp','Та же 3D-модель: оливковые ткани и шоколадные акценты','Олива и шоколад. Кадр из модели: меняются только цвета, геометрия и декор совпадают с исходным вариантом.'],
 };
 function selectReference(name){
- const [file,alt,caption]=references[name];$('reference-image').src='./assets/'+file+'?v=20261116-2';$('reference-image').alt=alt;$('reference-caption').textContent=caption;
+ const [file,alt,caption]=references[name];$('reference-image').src='./assets/'+file+'?v=20261116-3';$('reference-image').alt=alt;$('reference-caption').textContent=caption;
  for(const b of document.querySelectorAll('[data-reference]')){const active=b.dataset.reference===name;b.classList.toggle('selected',active);b.setAttribute('aria-pressed',String(active));}
 }
 for(const button of document.querySelectorAll('[data-reference]'))button.addEventListener('click',()=>selectReference(button.dataset.reference));
@@ -75,7 +75,7 @@ function applyStyle(value,announce=true){
  preferences.style=value;if(hall)hall.setStyle(value);persist();dirty=true;
  const descriptions={reference:'Шоколад, молочный и белый',rose:'Пыльная роза, оливковый и белый',olive:'Оливковый, шоколад и тёплый белый'};
  const palette=document.querySelector('.palette');palette.lastChild.textContent=' '+descriptions[value];
- const colors={reference:['#4b3024','#eee4d3','#f7f1e7'],rose:['#bc9094','#68714c','#f7f1e7'],olive:['#858767','#563b2e','#f7f1e7']};
+ const colors={reference:['#4b3024','#eadbc2','#f7f1e7'],rose:['#bc9094','#68714c','#f7f1e7'],olive:['#858767','#563b2e','#f7f1e7']};
  palette.querySelectorAll('span').forEach((s,i)=>s.style.backgroundColor=colors[value][i]);
 }
 $('decor-style').addEventListener('change',event=>applyStyle(event.target.value));
@@ -276,7 +276,7 @@ function frame(time){
 
 async function boot(){
  try{
-  const module=await import('./scene.js?v=20261116-2');THREE=module.THREE;
+  const module=await import('./scene.js?v=20261116-3');THREE=module.THREE;
   renderer=new THREE.WebGLRenderer({canvas,antialias:!coarse,alpha:false,powerPreference:'high-performance',preserveDrawingBuffer:true});
   renderer.debug.onShaderError=(gl,program,vertex,fragment)=>{const report={program:gl.getProgramInfoLog(program),vertex:gl.getShaderInfoLog(vertex),fragment:gl.getShaderInfoLog(fragment)};console.error(JSON.stringify(report));throw new Error('Графический процессор не смог подготовить рендер');};
   renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.12;
@@ -284,7 +284,7 @@ async function boot(){
   camera=new THREE.PerspectiveCamera(60,1,.045,70);planCamera=new THREE.OrthographicCamera(-10,10,6,-6,.1,80);planCamera.up.set(0,0,-1);planCamera.position.set(8.37,30,5);planCamera.lookAt(8.37,0,5);
   $('load-status').textContent='Расставляем мебель и свадебный декор';await new Promise(resolve=>requestAnimationFrame(resolve));
   $('load-status').textContent='Загружаем материалы тканей и камня';hall=await module.createHall(renderer);ready=true;setView('entrance');applyStyle(preferences.style,false);hall.setLighting(preferences.lighting);hall.setDecor(preferences.decor);updateQuality();
-  const graphics=await import('./render-still.js?v=20261116-2');renderStill=graphics.renderStill;presentation=graphics.createPresentation(renderer,hall.scene,camera);updateQuality();
+  const graphics=await import('./render-still.js?v=20261116-3');renderStill=graphics.renderStill;presentation=graphics.createPresentation(renderer,hall.scene,camera);updateQuality();
   renderer.shadowMap.needsUpdate=true;presentation.render(camera);drawMap();
   $('start-button').disabled=false;$('start-label').textContent='Войти в зал';$('load-status').textContent=coarse?'Управление касанием':'Управление мышью и клавиатурой';
   window.addEventListener('resize',resize);new ResizeObserver(resize).observe($('app'));
