@@ -6,11 +6,17 @@ export function createPresentation(renderer,scene,camera){
  const composer=new EffectComposer(renderer,target),beauty=new RenderPass(scene,camera);
  const ao=new GTAOPass(scene,camera,512,512,undefined,{radius:.22,thickness:.14,distanceExponent:1,scale:1.0,samples:8},{radius:4,lumaPhi:8,depthPhi:3,normalPhi:4});
  ao.blendIntensity=.65;composer.addPass(beauty);composer.addPass(ao);composer.addPass(new OutputPass());
- let enabled=true,quality='auto';
+ let enabled=true,quality='auto',width=1,height=1,motionScale=1;
  return{
-  resize(w,h){composer.setPixelRatio(renderer.getPixelRatio());composer.setSize(w,h);ao.setSize(Math.max(1,Math.round(w*.75)),Math.max(1,Math.round(h*.75)));},
+  resize(w,h){width=w;height=h;motionScale=1;composer.setPixelRatio(renderer.getPixelRatio());composer.setSize(w,h);ao.setSize(Math.max(1,Math.round(w*.75)),Math.max(1,Math.round(h*.75)));},
   setQuality(value){quality=value;enabled=value!=='low';},
-  render(camera,plan=false,moving=false){if(plan||!enabled){renderer.render(scene,camera);return;}beauty.camera=camera;ao.camera=camera;ao.enabled=quality==='high'||!moving;composer.render();},
+  render(camera,plan=false,moving=false){
+   if(plan||!enabled){renderer.render(scene,camera);return;}
+   // Preserve full detail when stopped; reduce only the moving preview's fill cost.
+   const scale=(quality==='auto'&&moving)?.75:1;
+   if(scale!==motionScale){motionScale=scale;composer.setPixelRatio(renderer.getPixelRatio()*scale);composer.setSize(width,height);ao.setSize(Math.max(1,Math.round(width*.75*scale)),Math.max(1,Math.round(height*.75*scale)));}
+   beauty.camera=camera;ao.camera=camera;ao.enabled=quality==='high'||!moving;composer.render();
+  },
  };
 }
 

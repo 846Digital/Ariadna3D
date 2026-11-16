@@ -1,8 +1,8 @@
 import * as THREE from './vendor/three.module.min.js';
 import {Reflector} from './vendor/Reflector.js';
-import {addMusicStage} from './venue-details.js?v=20261116-3';
-import {upholsteredShell,shellSeam,cushion,petal,leafGeometry,foldedNapkin,pooledFabric,gatheredTableFront,suspendedSwag} from './detail-geometry.js?v=20261116-3';
-import {boundary,HEIGHT,tables,columns,longTable,headTable,SEATS} from './layout.js?v=20261116-3';
+import {addMusicStage} from './venue-details.js?v=20261116-4';
+import {upholsteredShell,shellSeam,cushion,petal,leafGeometry,foldedNapkin,pooledFabric,gatheredTableFront,suspendedSwag} from './detail-geometry.js?v=20261116-4';
+import {boundary,HEIGHT,tables,columns,longTable,headTable,SEATS} from './layout.js?v=20261116-4';
 
 export const palettes={
  reference:{name:'По фотографии',cloth:'#eadbc2',napkin:'#4b3024',backdrop:'#eee0c8',drape:'#4c2d1e',pink:'#f2e9df',green:'#e7e6d8'},
@@ -263,9 +263,10 @@ export async function createHall(renderer){
   mesh(cylinder(.29,.30,3.14,32),m.trim,room,c.x,1.64,c.z).userData.shadow=true;
   for(const [y,r,h] of [[.05,.37,.1],[.14,.34,.08],[3.13,.35,.12],[3.23,.39,.08],[3.30,.41,.06]])mesh(cylinder(r,r,h,32),m.trim,room,c.x,y,c.z);
  }
- // Both mirror bands reflect the actual furniture and camera position.
+ // The photos show mirror bands and sconces only in the long-table wall recess.
+ // The TV projection and the passages beside the bar are undecorated.
  const mirrors=[],mirrorFallbacks=[];let reflecting=false;
- for(const [spans,z] of [[[[.5,4.06]],3.49],[[[4.25,6.8]],3.87],[[[6.98,8.16],[11.65,14.40]],3.96]]){
+ for(const [spans,z] of [[[[.5,4.06]],3.49]]){
   const mp=[],mi=[];
   for(const [start,end] of spans)for(const y of [.94,2.65])for(let x=start;x<end-.10;x+=.23){
    const w=Math.min(.218,end-x),k=mp.length/3;
@@ -547,14 +548,26 @@ export async function createHall(renderer){
  for(const t of [...tables,{x:headTable.x,z:headTable.z}]){const s=mesh(geometry('shadowplane',()=>new THREE.PlaneGeometry(1,1)),shadowMaterial,shadows,t.x,.004,t.z,2.05,2.05,1);s.rotation.x=-Math.PI/2;}
  for(const c of chairObstacles){const s=mesh(geometry('shadowplane',()=>new THREE.PlaneGeometry(1,1)),shadowMaterial,shadows,c.x,.006,c.z,.83,.83,1);s.rotation.x=-Math.PI/2;}
 
- const ambient=new THREE.HemisphereLight('#e9edf0','#514b43',.72);scene.add(ambient);
- // The ray crosses the actual window openings below the Roman blinds.
- const sun=new THREE.DirectionalLight('#fff9f0',1.35);sun.position.set(8,3.9,15.5);sun.target.position.set(6.5,0,4.2);sun.castShadow=true;
+ const ambient=new THREE.HemisphereLight('#edf0f3','#63594b',.24);scene.add(ambient);
+ // Diffuse daylight enters at each real opening, below the Roman blinds.
+ const windowLights=openings.map(o=>{
+  const top=o.arch?o.t:2.20,bottom=o.b+.06;
+  const light=new THREE.SpotLight('#f0f4ff',12,16,1.45,1,2);
+  light.position.set(o.x,(top+bottom)/2,9.79);light.target.position.set(o.x,.75,4.8);
+  light.userData.strength=Math.min(2.5,(o.w-.08)*(top-bottom)/1.5);
+  scene.add(light,light.target);return light;
+ });
+ // A restrained sun supplements the soft window light with directional shadows.
+ const sun=new THREE.DirectionalLight('#fff8eb',.5);sun.position.set(8,3.9,15.5);sun.target.position.set(6.5,0,4.2);sun.castShadow=true;
  sun.shadow.mapSize.set(4096,4096);Object.assign(sun.shadow.camera,{left:-11,right:11,top:8,bottom:-8,near:.5,far:35});sun.shadow.bias=-.00012;sun.shadow.normalBias=.012;sun.shadow.radius=2;scene.add(sun,sun.target);
- // Four warm sources coincide with the four groups of suspended LED rings.
- // One shared sun shadow map + contact shading keeps these inexpensive.
- const chandelierLights=[2.3,6.5,10.7,14.7].map(x=>{const light=new THREE.PointLight('#ffe5bc',12,8,2);light.position.set(x,2.72,6.67);scene.add(light);return light;});
- const frontLight=new THREE.DirectionalLight('#fff1dc',.55);frontLight.position.set(9,3,7);frontLight.target.position.set(0,1.1,7.2);scene.add(frontLight,frontLight.target);
+ // Wide downward cones avoid the old point-light ceiling hotspots.
+ const chandelierLights=[2.3,6.5,10.7,14.7].map(x=>{
+  const light=new THREE.SpotLight('#ffe5c8',6,11,1.42,.85,2);
+  light.position.set(x,2.72,6.67);light.target.position.set(x,0,6.67);scene.add(light,light.target);return light;
+ });
+ const pendantLights=[2.2,5.6,8.7,12.2,15.3].map(x=>{
+  const light=new THREE.PointLight('#ffe8d0',1.2,4,2);light.position.set(x,2.63,9.02);scene.add(light);return light;
+ });
 
  for(const root of [room,ceiling,lightsVisual,seating,decor,flowersRef,flowersSubtle,referenceExtras,draperyReference,draperyRose,draperyOlive,planWalls,outside,shadows])instanceStatic(root);
  let style='reference',plan=false,decorVisible=true,lightingMode='day';
@@ -570,15 +583,19 @@ export async function createHall(renderer){
  }
  function setLighting(value){
   const settings={
-   day:{sun:1.35,lamps:12,ambient:.72,fill:.45,environment:.55,exposure:1.02},
-   windows:{sun:2.0,lamps:0,ambient:.65,fill:.12,environment:.55,exposure:1.02},
-   lamps:{sun:0,lamps:33,ambient:.28,fill:.18,environment:.34,exposure:1.12},
-   evening:{sun:.08,lamps:27,ambient:.34,fill:.28,environment:.38,exposure:1.12},
+   day:{sun:.50,windows:12,lamps:6,pendants:1.2,ambient:.36,environment:.30,exposure:1.02},
+   windows:{sun:.65,windows:16,lamps:0,pendants:0,ambient:.30,environment:.28,exposure:1.02},
+   lamps:{sun:0,windows:0,lamps:18,pendants:3.2,ambient:.38,environment:.12,exposure:1.02},
+   evening:{sun:0,windows:.7,lamps:14,pendants:2.6,ambient:.32,environment:.14,exposure:1.02},
   };
   if(!settings[value])return;lightingMode=value;const p=settings[value],night=value==='lamps'||value==='evening';scene.userData.evening=night;
-  ambient.intensity=p.ambient;sun.intensity=p.sun;frontLight.intensity=p.fill;chandelierLights.forEach(light=>{light.intensity=p.lamps;});
+  // Keep light counts fixed: switching modes must not rebuild all GPU shaders.
+  ambient.intensity=p.ambient;ambient.color.set(night?'#ffe5c9':'#edf0f3');sun.intensity=p.sun;
+  windowLights.forEach(light=>{light.intensity=p.windows*light.userData.strength;});
+  chandelierLights.forEach(light=>{light.intensity=p.lamps;});
+  pendantLights.forEach(light=>{light.intensity=p.pendants;});
   m.window.color.set(night?'#667d89':'#dbe8e7');sky.material.color.set(night?'#344453':'#d1dcd6');
-  m.glow.color.set(value==='windows'?'#c9c5b9':night?'#ffd298':'#ffe3a6');m.shade.emissiveIntensity=value==='windows'?.05:night?1.1:.65;scene.environmentIntensity=p.environment;
+  m.glow.color.set(value==='windows'?'#89857c':night?'#ffe0b9':'#fff0d5');m.shade.emissiveIntensity=value==='windows'?0:night?.55:.32;scene.environmentIntensity=p.environment;
   renderer.toneMappingExposure=p.exposure;renderer.shadowMap.needsUpdate=true;
  }
  function setQuality(value){
@@ -590,7 +607,7 @@ export async function createHall(renderer){
  }
  setStyle('reference');
  return {scene,chairObstacles,materials:m,setStyle,setLighting,setQuality,
-  lightSources:()=>({mode:lightingMode,windows:sun.intensity,lamps:chandelierLights.map(light=>light.intensity)}),
+  lightSources:()=>({mode:lightingMode,windows:sun.intensity,windowAreas:windowLights.map(light=>light.intensity),lamps:chandelierLights.map(light=>light.intensity),pendants:pendantLights.map(light=>light.intensity),exposure:renderer.toneMappingExposure,mirrorGroups:mirrors.length}),
   setPlan(value){plan=value;updateVisibility();},setDecor(value){decorVisible=value;updateVisibility();},
   stats(){let instances=0,drawObjects=0,modelTriangles=0,flowerTriangles=0;const floral=new Set([m.flowerWhite,m.flowerPink,m.flowerGreen,m.pollen,m.leaf,m.stem]);scene.traverse(o=>{if(o.isInstancedMesh){instances+=o.count;drawObjects++;}if(o.isMesh){const n=(o.geometry.index?.count||o.geometry.attributes.position.count)/3*(o.isInstancedMesh?o.count:1);modelTriangles+=n;if(floral.has(o.material))flowerTriangles+=n;}});return{seats:SEATS,guestChairs:chairCount,instances,drawObjects,modelTriangles,flowerTriangles,style,bar:{x:9.88,z:3.12},television:{x:5.8,z:3.99},musicStage};},
   geometrySignature(){scene.updateMatrixWorld(true);let hash=2166136261;const push=value=>{const s=String(value);for(let i=0;i<s.length;i++)hash=Math.imul(hash^s.charCodeAt(i),16777619);};scene.traverseVisible(o=>{if(!o.isMesh)return;push(o.geometry.id);push(o.count||1);for(const v of o.matrixWorld.elements)push(v.toFixed(5));if(o.isInstancedMesh)for(const v of o.instanceMatrix.array)push(v.toFixed(5));});return(hash>>>0).toString(16);},
