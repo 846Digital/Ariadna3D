@@ -4,7 +4,7 @@ import * as THREE from './vendor/three.module.min.js';
 // All dimensions are in metres. Its surfaces remain curved at close range.
 function shellTop(a,arms){const u=Math.max(0,Math.min(1,(Math.abs(a)-.73)/.92));return arms?1.01-.34*u*u*(3-2*u):.98+.018*Math.cos(a);}
 export function upholsteredShell(arms=true){
- const p=[],uv=[],idx=[],N=64,R=32,span=arms?1.65:1.10;
+ const p=[],uv=[],idx=[],N=32,R=16,span=arms?1.65:1.10;
  for(let i=0;i<=N;i++)for(let j=0;j<=R;j++){
   const a=(i/N-.5)*span*2,t=j/R*Math.PI*2;
   const top=shellTop(a,arms);
@@ -38,13 +38,13 @@ export function cushion(){
  shape.moveTo(-w/2+r,-d/2);shape.lineTo(w/2-r,-d/2);shape.quadraticCurveTo(w/2,-d/2,w/2,-d/2+r);
  shape.lineTo(w/2,d/2-r);shape.quadraticCurveTo(w/2,d/2,w/2-r,d/2);shape.lineTo(-w/2+r,d/2);
  shape.quadraticCurveTo(-w/2,d/2,-w/2,d/2-r);shape.lineTo(-w/2,-d/2+r);shape.quadraticCurveTo(-w/2,-d/2,-w/2+r,-d/2);
- const g=new THREE.ExtrudeGeometry(shape,{depth:.045,bevelEnabled:true,bevelThickness:.028,bevelSize:.015,bevelSegments:5,curveSegments:12,steps:1});
+ const g=new THREE.ExtrudeGeometry(shape,{depth:.045,bevelEnabled:true,bevelThickness:.028,bevelSize:.015,bevelSegments:3,curveSegments:8,steps:1});
  g.rotateX(-Math.PI/2);g.computeVertexNormals();return g;
 }
 
 // Curved petal faces +z. Shape and crimped edge are geometry, not a billboard.
 export function petal(kind='orchid'){
- const p=[],uv=[],idx=[],N=18,R=22;
+ const p=[],uv=[],idx=[],N=kind==='orchid'?8:6,R=kind==='orchid'?10:8;
  for(let j=0;j<=R;j++)for(let i=0;i<=N;i++){
   const v=j/R,u=i/N*2-1;
   const carnation=kind==='carnation';
@@ -60,7 +60,7 @@ export function petal(kind='orchid'){
 }
 
 export function leafGeometry(){
- const p=[],uv=[],idx=[],N=10,R=16;
+ const p=[],uv=[],idx=[],N=4,R=8;
  for(let j=0;j<=R;j++)for(let i=0;i<=N;i++){
   const v=j/R,u=i/N*2-1;
   p.push(.018*u*Math.pow(Math.sin(v*Math.PI),.85),v*.14,.014*Math.sin(v*Math.PI)-.009*Math.abs(u)*Math.sin(v*Math.PI));uv.push(i/N,v);
@@ -70,7 +70,7 @@ export function leafGeometry(){
 }
 
 export function foldedNapkin(){
- const g=new THREE.PlaneGeometry(.19,.29,32,42),p=g.attributes.position;
+ const g=new THREE.PlaneGeometry(.19,.29,18,24),p=g.attributes.position;
  for(let i=0;i<p.count;i++){
   const x=p.getX(i),v=p.getY(i)/.29+.5;
   // Layered cloth rolled softly at the middle and opening at the ends.

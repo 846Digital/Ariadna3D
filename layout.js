@@ -29,6 +29,7 @@ export const views = {
   tables:{label:'Длинный гостевой стол',x:4.7,z:6.65,lookX:2.6,lookZ:3.52,pitch:-.12},
   windows:{label:'У окон',x:13.4,z:8.8,lookX:4.0,lookZ:9.2,pitch:.03},
   bar:{label:'Барная зона',x:12.8,z:6.5,lookX:10.0,lookZ:3.3,pitch:-.03},
+  stage:{label:'Музыкальная сцена',x:12.65,z:7.6,lookX:16.3,lookZ:5.7,pitch:-.08},
 };
 export const obstacles = [
   ...tables.map(t=>({kind:'circle',x:t.x,z:t.z,r:t.radius+.08})),

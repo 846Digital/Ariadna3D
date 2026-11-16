@@ -4,13 +4,13 @@ import {EffectComposer,RenderPass,GTAOPass,OutputPass} from './vendor/rendering.
 export function createPresentation(renderer,scene,camera){
  const target=new THREE.WebGLRenderTarget(1,1,{type:THREE.HalfFloatType,samples:4});
  const composer=new EffectComposer(renderer,target),beauty=new RenderPass(scene,camera);
- const ao=new GTAOPass(scene,camera,512,512,undefined,{radius:.22,thickness:.14,distanceExponent:1,scale:1.0,samples:16},{radius:4,lumaPhi:8,depthPhi:3,normalPhi:4});
+ const ao=new GTAOPass(scene,camera,512,512,undefined,{radius:.22,thickness:.14,distanceExponent:1,scale:1.0,samples:8},{radius:4,lumaPhi:8,depthPhi:3,normalPhi:4});
  ao.blendIntensity=.65;composer.addPass(beauty);composer.addPass(ao);composer.addPass(new OutputPass());
- let enabled=true;
+ let enabled=true,quality='auto';
  return{
   resize(w,h){composer.setPixelRatio(renderer.getPixelRatio());composer.setSize(w,h);ao.setSize(Math.max(1,Math.round(w*.75)),Math.max(1,Math.round(h*.75)));},
-  setQuality(value){enabled=value!=='low';},
-  render(camera,plan=false){if(plan||!enabled){renderer.render(scene,camera);return;}beauty.camera=camera;ao.camera=camera;composer.render();},
+  setQuality(value){quality=value;enabled=value!=='low';},
+  render(camera,plan=false,moving=false){if(plan||!enabled){renderer.render(scene,camera);return;}beauty.camera=camera;ao.camera=camera;ao.enabled=quality==='high'||!moving;composer.render();},
  };
 }
 

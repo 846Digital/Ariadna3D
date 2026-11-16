@@ -1,4 +1,4 @@
-import {boundary,tables,columns,longTable,headTable,views,SEATS,canStand} from './layout.js';
+import {boundary,tables,columns,longTable,headTable,views,SEATS,canStand} from './layout.js?v=20261116-2';
 
 const $=id=>document.getElementById(id),canvas=$('scene');
 const coarse=matchMedia('(pointer:coarse)').matches,reduced=matchMedia('(prefers-reduced-motion:reduce)').matches;
@@ -6,7 +6,7 @@ const defaults={style:'reference',lighting:'day',quality:'auto',speed:1,sensitiv
 let preferences={...defaults};
 try{preferences={...defaults,...JSON.parse(localStorage.getItem('ariadna-viewer-v1')||'{}')};}catch{}
 if(!['reference','rose','olive'].includes(preferences.style))preferences.style='reference';
-if(!['day','evening'].includes(preferences.lighting))preferences.lighting='day';
+if(!['day','windows','lamps','evening'].includes(preferences.lighting))preferences.lighting='day';
 if(!['auto','high','low'].includes(preferences.quality))preferences.quality='auto';
 for(const key of ['speed','sensitivity'])preferences[key]=Math.min(1.8,Math.max(.4,Number(preferences[key])||1));
 let renderer,hall,THREE,camera,planCamera,presentation,renderStill,renderJob=null,mode='walk',started=false,ready=false,dirty=true,renderingFailed=false;
@@ -14,6 +14,10 @@ let yaw=0,pitch=0,lastTime=0,notificationTimer,zoom=1,mapTime=0,transitioning=fa
 let velocity={x:0,z:0},joystick={x:0,y:0},keys=new Set(),lastView='entrance';
 const position={x:views.entrance.x,z:views.entrance.z},eyeHeight=1.58;
 let drag=null,pinch=null;const pointers=new Map();
+let detailRestoreAt=0,detailSettled=true;
+function markMotion(){detailRestoreAt=performance.now()+140;detailSettled=false;}
+for(const name of ['pointermove','touchmove','keydown','wheel'])canvas.addEventListener(name,markMotion,{passive:true});
+document.addEventListener('keydown',markMotion,{passive:true});
 
 function persist(){try{localStorage.setItem('ariadna-viewer-v1',JSON.stringify(preferences));}catch{}}
 function notify(message){$('notification').textContent=message;$('notification').hidden=false;clearTimeout(notificationTimer);notificationTimer=setTimeout(()=>$('notification').hidden=true,4200);}
@@ -41,27 +45,30 @@ const references={
  architecture:['venue-interior.jpg','Основной зал Ариадны: зеркальные полосы, бра, бар и кольцевые светильники','Фотография с официального сайта: зеркальные полосы, бра, бар и светильники.'],
  windows:['venue-windows.jpg','Арочные двери, окна и белые колонны в основном зале','Фотография с официального сайта: окна, колонны и цилиндрические подвесы.'],
  bar:['venue-bar.jpg','Барная стойка с тёмным фасадом и терракотовыми стульями','Фотография барной зоны с официального сайта.'],
+ stage:['venue-stage.jpg','Музыкальная сцена с низким тёмным подиумом, растительной росписью и акустикой справа от бара','Дополнительный ракурс основного зала: низкая сцена справа от бара, телевизор на стене слева.'],
  rose:['preview-rose.webp','Та же 3D-модель: пыльно-розовые ткани и оливковые акценты','Пыльная роза. Кадр из модели: меняются только цвета, геометрия и декор совпадают с исходным вариантом.'],
  olive:['preview-olive.webp','Та же 3D-модель: оливковые ткани и шоколадные акценты','Олива и шоколад. Кадр из модели: меняются только цвета, геометрия и декор совпадают с исходным вариантом.'],
 };
 function selectReference(name){
- const [file,alt,caption]=references[name];$('reference-image').src='./assets/'+file;$('reference-image').alt=alt;$('reference-caption').textContent=caption;
+ const [file,alt,caption]=references[name];$('reference-image').src='./assets/'+file+'?v=20261116-2';$('reference-image').alt=alt;$('reference-caption').textContent=caption;
  for(const b of document.querySelectorAll('[data-reference]')){const active=b.dataset.reference===name;b.classList.toggle('selected',active);b.setAttribute('aria-pressed',String(active));}
 }
 for(const button of document.querySelectorAll('[data-reference]'))button.addEventListener('click',()=>selectReference(button.dataset.reference));
 $('reference-image').addEventListener('error',()=>{$('reference-caption').textContent='Фотография не загрузилась. Проверьте папку assets и обновите страницу.';});
 
 function updateSettingsUI(){
- $('decor-style').value=preferences.style;$('lighting').value=preferences.lighting;$('quality').value=preferences.quality;
+ $('decor-style').value=preferences.style;$('lighting').value=$('lighting-quick').value=preferences.lighting;$('quality').value=preferences.quality;
  $('speed').value=preferences.speed;$('sensitivity').value=preferences.sensitivity;$('show-map').checked=preferences.map;$('show-decor').checked=preferences.decor;
  $('speed-value').textContent=preferences.speed<1?'Медленно':preferences.speed>1.2?'Быстро':'Обычная';
 }
 function updateQuality(){
  if(!renderer)return;
- const cap=preferences.quality==='low'?1:preferences.quality==='high'?2:coarse?1.25:1.5;
+ const autoCap=Math.min(coarse?1.25:1.5,Math.sqrt((coarse?900000:1400000)/Math.max(1,canvas.clientWidth*canvas.clientHeight)));
+ const cap=preferences.quality==='low'?1:preferences.quality==='high'?2:autoCap;
  renderer.setPixelRatio(Math.min(devicePixelRatio||1,cap));
  renderer.shadowMap.enabled=preferences.quality!=='low';renderer.shadowMap.needsUpdate=true;resize();
  presentation?.setQuality(preferences.quality);
+ hall?.setQuality(preferences.quality);
 }
 function applyStyle(value,announce=true){
  if(!['reference','rose','olive'].includes(value))return;
@@ -72,6 +79,7 @@ function applyStyle(value,announce=true){
  palette.querySelectorAll('span').forEach((s,i)=>s.style.backgroundColor=colors[value][i]);
 }
 $('decor-style').addEventListener('change',event=>applyStyle(event.target.value));
+$('lighting-quick').addEventListener('change',event=>{preferences.lighting=event.target.value;hall?.setLighting(preferences.lighting);updateSettingsUI();persist();dirty=true;});
 for(const id of ['lighting','quality','speed','sensitivity'])$(id).addEventListener(id==='speed'||id==='sensitivity'?'input':'change',event=>{
  preferences[id]=id==='speed'||id==='sensitivity'?Number(event.target.value):event.target.value;
  if(id==='quality')updateQuality();if(id==='lighting'&&hall)hall.setLighting(preferences.lighting);
@@ -97,6 +105,7 @@ function setView(name){
  if(mode!=='walk')setMode('walk');
  for(const b of document.querySelectorAll('[data-view]')){const active=b.dataset.view===name;b.classList.toggle('selected',active);b.setAttribute('aria-pressed',String(active));}
  $('location-label').textContent=v.label;dirty=true;
+ markMotion();
  if(started){$('walk-hint').hidden=true;$('walk-hint').dataset.dismissed='true';}
  if(started)canvas.focus({preventScroll:true});
 }
@@ -256,8 +265,10 @@ function frame(time){
  requestAnimationFrame(frame);if(!ready||renderingFailed||document.hidden||renderJob)return;
  const dt=lastTime?Math.min((time-lastTime)/1000,.05):.016;lastTime=time;
  move(dt);
+ const moving=time<detailRestoreAt||keys.size>0||Math.abs(joystick.x)+Math.abs(joystick.y)>.01;
+ if(!moving&&!detailSettled){dirty=true;detailSettled=true;}
  if(dirty){
-  try{presentation.render(mode==='plan'?planCamera:camera,mode==='plan');}catch(error){console.error(error);failure('Браузеру не удалось отрисовать зал. Обновите страницу или попробуйте другой браузер.');return;}
+  try{presentation.render(mode==='plan'?planCamera:camera,mode==='plan',moving);}catch(error){console.error(error);failure('Браузеру не удалось отрисовать зал. Обновите страницу или попробуйте другой браузер.');return;}
   drawMap();
   dirty=false;
  }
@@ -265,7 +276,7 @@ function frame(time){
 
 async function boot(){
  try{
-  const module=await import('./scene.js');THREE=module.THREE;
+  const module=await import('./scene.js?v=20261116-2');THREE=module.THREE;
   renderer=new THREE.WebGLRenderer({canvas,antialias:!coarse,alpha:false,powerPreference:'high-performance',preserveDrawingBuffer:true});
   renderer.debug.onShaderError=(gl,program,vertex,fragment)=>{const report={program:gl.getProgramInfoLog(program),vertex:gl.getShaderInfoLog(vertex),fragment:gl.getShaderInfoLog(fragment)};console.error(JSON.stringify(report));throw new Error('Графический процессор не смог подготовить рендер');};
   renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.12;
@@ -273,13 +284,13 @@ async function boot(){
   camera=new THREE.PerspectiveCamera(60,1,.045,70);planCamera=new THREE.OrthographicCamera(-10,10,6,-6,.1,80);planCamera.up.set(0,0,-1);planCamera.position.set(8.37,30,5);planCamera.lookAt(8.37,0,5);
   $('load-status').textContent='Расставляем мебель и свадебный декор';await new Promise(resolve=>requestAnimationFrame(resolve));
   $('load-status').textContent='Загружаем материалы тканей и камня';hall=await module.createHall(renderer);ready=true;setView('entrance');applyStyle(preferences.style,false);hall.setLighting(preferences.lighting);hall.setDecor(preferences.decor);updateQuality();
-  const graphics=await import('./render-still.js');renderStill=graphics.renderStill;presentation=graphics.createPresentation(renderer,hall.scene,camera);updateQuality();
+  const graphics=await import('./render-still.js?v=20261116-2');renderStill=graphics.renderStill;presentation=graphics.createPresentation(renderer,hall.scene,camera);updateQuality();
   renderer.shadowMap.needsUpdate=true;presentation.render(camera);drawMap();
   $('start-button').disabled=false;$('start-label').textContent='Войти в зал';$('load-status').textContent=coarse?'Управление касанием':'Управление мышью и клавиатурой';
   window.addEventListener('resize',resize);new ResizeObserver(resize).observe($('app'));
   canvas.addEventListener('webglcontextlost',event=>{event.preventDefault();failure('Графический контекст был потерян. Закройте лишние вкладки и обновите страницу.');});
   if(new URLSearchParams(location.search).has('qa'))window.__ARIADNA__={
-   getState:()=>({ready,started,mode,position:{...position},yaw,pitch,preferences:{...preferences},...hall.stats(),drawCalls:renderer.info.render.calls,triangles:renderer.info.render.triangles,focus:document.activeElement?.id,keys:[...keys]}),
+   getState:()=>({ready,started,mode,position:{...position},yaw,pitch,preferences:{...preferences},...hall.stats(),lightSources:hall.lightSources(),drawCalls:renderer.info.render.calls,triangles:renderer.info.render.triangles,focus:document.activeElement?.id,keys:[...keys]}),
    canStand:(x,z)=>canStand(x,z,.16,hall.chairObstacles),setView,setMode,applyStyle,start,
    project:(x,y,z)=>{const p=new THREE.Vector3(x,y,z).project(mode==='plan'?planCamera:camera);return{x:(p.x+1)*canvas.clientWidth/2,y:(1-p.y)*canvas.clientHeight/2};},
    materials:()=>Object.fromEntries(['cloth','napkin','backdrop','drape','chair'].map(key=>[key,'#'+hall.materials[key].color.getHexString()])),
