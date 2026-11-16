@@ -1,11 +1,18 @@
-import {boundary,tables,columns,longTable,headTable,views,SEATS,canStand} from './layout.js?v=20261116-5';
+import {boundary,columns,headTable,views,canStand} from './layout.js?v=20261116-6';
+
+import {guestTables,seatCount} from './table-layout.js?v=20261116-6';
+import {createTableEditor,loadSeating} from './table-editor.js?v=20261116-6';
+loadSeating();
 
 const $=id=>document.getElementById(id),canvas=$('scene');
 const coarse=matchMedia('(pointer:coarse)').matches,reduced=matchMedia('(prefers-reduced-motion:reduce)').matches;
-const defaults={style:'reference',lighting:'day',quality:'auto',speed:1,sensitivity:1,map:true,decor:true};
+const defaults={style:'reference',presidium:'original',flowers:'current',tableDecor:'flowers',lighting:'day',quality:'auto',speed:1,sensitivity:1,map:true,decor:true};
 let preferences={...defaults};
 try{preferences={...defaults,...JSON.parse(localStorage.getItem('ariadna-viewer-v1')||'{}')};}catch{}
 if(!['reference','rose','olive'].includes(preferences.style))preferences.style='reference';
+if(!['original','new'].includes(preferences.presidium))preferences.presidium='original';
+if(!['flowers','candles'].includes(preferences.tableDecor))preferences.tableDecor='flowers';
+if(!['current','dopamine'].includes(preferences.flowers))preferences.flowers='current';
 if(!['day','windows','lamps','evening'].includes(preferences.lighting))preferences.lighting='day';
 if(!['auto','high','low'].includes(preferences.quality))preferences.quality='auto';
 for(const key of ['speed','sensitivity'])preferences[key]=Math.min(1.8,Math.max(.4,Number(preferences[key])||1));
@@ -18,6 +25,9 @@ let detailRestoreAt=0,detailSettled=true;
 function markMotion(){detailRestoreAt=performance.now()+140;detailSettled=false;}
 for(const name of ['pointermove','touchmove','keydown','wheel'])canvas.addEventListener(name,markMotion,{passive:true});
 document.addEventListener('keydown',markMotion,{passive:true});
+
+const tableEditor=createTableEditor({getHall:()=>hall,getPoint:(x,y)=>planWorld(x,y),changed:()=>{dirty=true;const count=seatCount();document.querySelector('.location-meta').textContent=count+' мест';$('plan-count').textContent='Схема · '+count+' мест';},resized:()=>resize(),notify:message=>notify(message)});
+if(coarse)$('decor-controls').open=false;
 
 function persist(){try{localStorage.setItem('ariadna-viewer-v1',JSON.stringify(preferences));}catch{}}
 function notify(message){$('notification').textContent=message;$('notification').hidden=false;clearTimeout(notificationTimer);notificationTimer=setTimeout(()=>$('notification').hidden=true,4200);}
@@ -33,12 +43,18 @@ for(const dialog of document.querySelectorAll('dialog')){
 }
 $('help-button').addEventListener('click',()=>openDialog('help-dialog'));
 $('settings-button').addEventListener('click',()=>openDialog('settings-dialog'));
-$('references-button').addEventListener('click',()=>{selectReference(preferences.style==='reference'?'decor':preferences.style);openDialog('references-dialog');});
+$('references-button').addEventListener('click',()=>{selectReference(preferences.presidium==='new'?'newDecor':preferences.style==='reference'?'decor':preferences.style);openDialog('references-dialog');});
 $('fallback-references').addEventListener('click',()=>openDialog('references-dialog'));
 $('retry-button').addEventListener('click',()=>location.reload());
 $('dismiss-hint').addEventListener('click',()=>$('walk-hint').hidden=true);
 
 const references={
+ candlePreview:['preview-candles.webp','Гостевые столы со свечами в прозрачных цилиндрах','Кадр из модели: новый президиум и свечи на гостевых столах.'],
+ candles:['reference-candles.jpg','Свечи в прозрачных цилиндрах разной высоты на молочной скатерти','Ваш новый референс настольных свечей.'],
+ curtains:['reference-curtains.jpg','Новый президиум и шоколадная драпировка крупным планом','Дополнительный референс драпировки и свадебного стола.'],
+ newDecor:['reference-presidium.jpg','Новый референс: шоколадные портьеры, молочные сборки, цветочные композиции и свечи','Ваш новый референс президиума.'],
+ newPreview:['preview-presidium.webp','Новый президиум в 3D-зале','Кадр из модели: двусторонняя драпировка, молочные сваги и напольные цветы.'],
+ dopamine:['preview-dopamine.webp','Новый президиум с разноцветными цветами','Дофаминовые цветы. Расположение и форма композиций сохраняются.'],
  decor:['reference-decor.jpg','Фотография свадебного президиума с молочной и шоколадной драпировкой','Ваш референс свадебного оформления.'],
  hall:['reference-hall.jpg','Банкетный зал с молочными скатертями, коричневыми стульями и кольцевыми люстрами','Ваш референс банкетного зала.'],
  plan:['seating-plan.jpg','Исходная схема рассадки на 47 человек','Ваша схема. По ней восстановлены контур помещения и расположение столов.'],
@@ -50,14 +66,14 @@ const references={
  olive:['preview-olive.webp','Та же 3D-модель: оливковые ткани и шоколадные акценты','Олива и шоколад. Кадр из модели: меняются только цвета, геометрия и декор совпадают с исходным вариантом.'],
 };
 function selectReference(name){
- const [file,alt,caption]=references[name];$('reference-image').src='./assets/'+file+'?v=20261116-5';$('reference-image').alt=alt;$('reference-caption').textContent=caption;
+ const [file,alt,caption]=references[name];$('reference-image').src='./assets/'+file+'?v=20261116-6';$('reference-image').alt=alt;$('reference-caption').textContent=caption;
  for(const b of document.querySelectorAll('[data-reference]')){const active=b.dataset.reference===name;b.classList.toggle('selected',active);b.setAttribute('aria-pressed',String(active));}
 }
 for(const button of document.querySelectorAll('[data-reference]'))button.addEventListener('click',()=>selectReference(button.dataset.reference));
 $('reference-image').addEventListener('error',()=>{$('reference-caption').textContent='Фотография не загрузилась. Проверьте папку assets и обновите страницу.';});
 
 function updateSettingsUI(){
- $('decor-style').value=preferences.style;$('lighting').value=$('lighting-quick').value=preferences.lighting;$('quality').value=preferences.quality;
+ $('decor-style').value=preferences.style;$('presidium-style').value=preferences.presidium;$('flower-style').value=preferences.flowers;$('table-decor').value=preferences.tableDecor;$('lighting').value=$('lighting-quick').value=preferences.lighting;$('quality').value=preferences.quality;
  $('speed').value=preferences.speed;$('sensitivity').value=preferences.sensitivity;$('show-map').checked=preferences.map;$('show-decor').checked=preferences.decor;
  $('speed-value').textContent=preferences.speed<1?'Медленно':preferences.speed>1.2?'Быстро':'Обычная';
 }
@@ -79,6 +95,9 @@ function applyStyle(value,announce=true){
  palette.querySelectorAll('span').forEach((s,i)=>s.style.backgroundColor=colors[value][i]);
 }
 $('decor-style').addEventListener('change',event=>applyStyle(event.target.value));
+for(const [id,key,method] of [['presidium-style','presidium','setPresidium'],['flower-style','flowers','setFlowers'],['table-decor','tableDecor','setTableDecor']])$(id).addEventListener('change',event=>{
+ preferences[key]=event.target.value;hall?.[method](preferences[key]);persist();dirty=true;
+});
 $('lighting-quick').addEventListener('change',event=>{preferences.lighting=event.target.value;hall?.setLighting(preferences.lighting);updateSettingsUI();persist();dirty=true;});
 for(const id of ['lighting','quality','speed','sensitivity'])$(id).addEventListener(id==='speed'||id==='sensitivity'?'input':'change',event=>{
  preferences[id]=id==='speed'||id==='sensitivity'?Number(event.target.value):event.target.value;
@@ -87,14 +106,15 @@ for(const id of ['lighting','quality','speed','sensitivity'])$(id).addEventListe
 });
 $('show-map').addEventListener('change',event=>{preferences.map=event.target.checked;persist();refreshControls();});
 $('show-decor').addEventListener('change',event=>{preferences.decor=event.target.checked;if(hall)hall.setDecor(preferences.decor);persist();dirty=true;});
-$('reset-settings').addEventListener('click',()=>{preferences={...defaults};updateSettingsUI();applyStyle(preferences.style,false);if(hall){hall.setLighting(preferences.lighting);hall.setDecor(true);}updateQuality();refreshControls();persist();notify('Настройки сброшены');});
+$('reset-settings').addEventListener('click',()=>{preferences={...defaults};updateSettingsUI();applyStyle(preferences.style,false);if(hall){hall.setLighting(preferences.lighting);hall.setPresidium(preferences.presidium);hall.setFlowers(preferences.flowers);hall.setTableDecor(preferences.tableDecor);hall.setDecor(true);}updateQuality();refreshControls();persist();notify('Настройки сброшены');});
 updateSettingsUI();applyStyle(preferences.style,false);
 
 function resize(){
  if(!renderer||renderJob)return;
  const w=canvas.clientWidth,h=canvas.clientHeight;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();
- const width=Math.max(19,12.5*w/h)/zoom,height=width*h/w;
- Object.assign(planCamera,{left:-width/2,right:width/2,top:height/2,bottom:-height/2});planCamera.updateProjectionMatrix();dirty=true;
+ const inset=mode==='plan'&&tableEditor.isActive()&&w>=900?360:0;
+ const width=Math.max(19*w/(w-inset),12.5*w/h)/zoom,height=width*h/w,offset=inset*width/(2*w);
+ Object.assign(planCamera,{left:-width/2-offset,right:width/2-offset,top:height/2,bottom:-height/2});planCamera.updateProjectionMatrix();dirty=true;
  presentation?.resize(w,h);
 }
 function orientCamera(){camera.position.set(position.x,eyeHeight,position.z);camera.rotation.set(pitch,yaw,0,'YXZ');}
@@ -113,7 +133,7 @@ function refreshControls(){
  for(const id of ['location','view-controls','corner-actions'])$(id).hidden=!started;
  $('minimap-wrap').hidden=!started||mode!=='walk'||!preferences.map;
  $('joystick').hidden=!started||mode!=='walk'||!coarse;
- $('plan-hint').hidden=!started||mode!=='plan';
+ $('plan-hint').hidden=!started||mode!=='plan';$('decor-controls').hidden=started&&mode==='plan';$('view-controls').hidden=!started||mode==='plan';$('table-editor').hidden=!started||mode!=='plan'||!tableEditor.isActive();
  $('walk-hint').hidden=!started||mode!=='walk'||$('walk-hint').dataset.dismissed==='true';
  $('walk-mode').classList.toggle('selected',mode==='walk');$('walk-mode').setAttribute('aria-pressed',String(mode==='walk'));
  $('plan-mode').classList.toggle('selected',mode==='plan');$('plan-mode').setAttribute('aria-pressed',String(mode==='plan'));
@@ -121,7 +141,7 @@ function refreshControls(){
 }
 function setMode(value){
  if(!ready)return;
- if(!started)start();releasePointer();mode=value;hall.setPlan(mode==='plan');refreshControls();dirty=true;
+ if(!started)start();releasePointer();if(value!=='plan')tableEditor.leave();mode=value;hall.setPlan(mode==='plan');refreshControls();resize();dirty=true;
  if(mode==='walk'){orientCamera();canvas.focus({preventScroll:true});}
 }
 function start(){
@@ -182,7 +202,8 @@ function enterAt(clientX,clientY){
 canvas.addEventListener('pointerdown',event=>{
  if(!started||!ready||anyDialog())return;
  pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});
- if(mode==='plan'&&pointers.size===2){const p=[...pointers.values()];pinch={distance:Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y),zoom};drag=null;return;}
+ if(mode==='plan'&&pointers.size===2){tableEditor.cancel();const p=[...pointers.values()];pinch={distance:Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y),zoom};drag=null;return;}
+ if(mode==='plan'&&tableEditor.isActive()){tableEditor.down(event);canvas.setPointerCapture(event.pointerId);return;}
  drag={id:event.pointerId,x:event.clientX,y:event.clientY,startX:event.clientX,startY:event.clientY,moved:false};
  canvas.setPointerCapture(event.pointerId);
  if(mode==='walk'&&event.pointerType==='mouse'&&event.button===0&&typeof canvas.requestPointerLock==='function'){
@@ -193,6 +214,7 @@ canvas.addEventListener('pointerdown',event=>{
 canvas.addEventListener('pointermove',event=>{
  if(pointers.has(event.pointerId))pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});
  if(pinch&&pointers.size===2){const p=[...pointers.values()];zoom=THREE.MathUtils.clamp(pinch.zoom*Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y)/pinch.distance,.7,2.2);resize();return;}
+ if(mode==='plan'&&!pinch&&tableEditor.move(event))return;
  if(!drag||drag.id!==event.pointerId||document.pointerLockElement===canvas)return;
  const dx=event.clientX-drag.x,dy=event.clientY-drag.y;
  if(Math.hypot(event.clientX-drag.startX,event.clientY-drag.startY)>6)drag.moved=true;
@@ -202,10 +224,11 @@ canvas.addEventListener('pointermove',event=>{
  drag.x=event.clientX;drag.y=event.clientY;
 });
 function endPointer(event){
+ if(mode==='plan'&&tableEditor.up(event)){pointers.delete(event.pointerId);if(pointers.size<2)pinch=null;return;}
  if(drag?.id===event.pointerId&&mode==='plan'&&!drag.moved&&!pinch)enterAt(event.clientX,event.clientY);
  pointers.delete(event.pointerId);if(pointers.size<2)pinch=null;if(drag?.id===event.pointerId)drag=null;
 }
-canvas.addEventListener('pointerup',endPointer);canvas.addEventListener('pointercancel',event=>{pointers.delete(event.pointerId);drag=null;pinch=null;});
+canvas.addEventListener('pointerup',endPointer);canvas.addEventListener('pointercancel',event=>{tableEditor.up(event,true);pointers.delete(event.pointerId);drag=null;pinch=null;});
 canvas.addEventListener('wheel',event=>{if(mode==='plan'&&started){event.preventDefault();zoom=THREE.MathUtils.clamp(zoom*Math.exp(-event.deltaY*.001),.7,2.2);resize();}},{passive:false});
 canvas.addEventListener('contextmenu',event=>event.preventDefault());
 
@@ -254,8 +277,8 @@ function drawMap(){
  c.beginPath();boundary.forEach(([x,z],i)=>i?c.lineTo(...point(x,z)):c.moveTo(...point(x,z)));c.closePath();c.fillStyle='#faf7ef';c.fill();c.strokeStyle='#8e7f6a';c.lineWidth=2.5;c.stroke();
  const color=preferences.style==='rose'?'#bc9094':preferences.style==='olive'?'#858767':'#d5c7b0';
  c.fillStyle=color;c.strokeStyle='#8d7d65';c.lineWidth=1;
- for(const t of tables){const [x,y]=point(t.x,t.z);c.beginPath();c.arc(x,y,t.radius*s,0,Math.PI*2);c.fill();c.stroke();}
- for(const t of [{...longTable,w:longTable.width,d:longTable.depth},{...headTable,w:headTable.width,d:headTable.depth}]){const [x,y]=point(t.x-t.w/2,t.z-t.d/2);c.fillRect(x,y,t.w*s,t.d*s);c.strokeRect(x,y,t.w*s,t.d*s);}
+ for(const t of guestTables.filter(t=>t.type==='round')){const [x,y]=point(t.x,t.z);c.beginPath();c.arc(x,y,t.radius*s,0,Math.PI*2);c.fill();c.stroke();}
+ for(const t of [...guestTables.filter(t=>t.type==='long').map(t=>({...t,w:t.width,d:t.depth})),{...headTable,w:headTable.width,d:headTable.depth}]){const [x,y]=point(t.x-t.w/2,t.z-t.d/2);c.fillRect(x,y,t.w*s,t.d*s);c.strokeRect(x,y,t.w*s,t.d*s);}
  c.fillStyle='#b7ad9c';for(const col of columns){c.beginPath();c.arc(...point(col.x,col.z),.31*s,0,Math.PI*2);c.fill();}
  const [x,y]=point(position.x,position.z),angle=-yaw-Math.PI/2;
  c.fillStyle='rgba(125,83,43,.14)';c.beginPath();c.moveTo(x,y);c.arc(x,y,45,angle-.55,angle+.55);c.closePath();c.fill();
@@ -276,25 +299,26 @@ function frame(time){
 
 async function boot(){
  try{
-  const module=await import('./scene.js?v=20261116-5');THREE=module.THREE;
+  const module=await import('./scene.js?v=20261116-6');THREE=module.THREE;
   renderer=new THREE.WebGLRenderer({canvas,antialias:!coarse,alpha:false,powerPreference:'high-performance',preserveDrawingBuffer:true});
   renderer.debug.onShaderError=(gl,program,vertex,fragment)=>{const report={program:gl.getProgramInfoLog(program),vertex:gl.getShaderInfoLog(vertex),fragment:gl.getShaderInfoLog(fragment)};console.error(JSON.stringify(report));throw new Error('Графический процессор не смог подготовить рендер');};
   renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.12;
   renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.shadowMap.autoUpdate=false;
   camera=new THREE.PerspectiveCamera(60,1,.045,70);planCamera=new THREE.OrthographicCamera(-10,10,6,-6,.1,80);planCamera.up.set(0,0,-1);planCamera.position.set(8.37,30,5);planCamera.lookAt(8.37,0,5);
   $('load-status').textContent='Расставляем мебель и свадебный декор';await new Promise(resolve=>requestAnimationFrame(resolve));
-  $('load-status').textContent='Загружаем материалы тканей и камня';hall=await module.createHall(renderer);ready=true;setView('entrance');applyStyle(preferences.style,false);hall.setLighting(preferences.lighting);hall.setDecor(preferences.decor);updateQuality();
-  const graphics=await import('./render-still.js?v=20261116-5');renderStill=graphics.renderStill;presentation=graphics.createPresentation(renderer,hall.scene,camera);updateQuality();
+  $('load-status').textContent='Загружаем материалы тканей и камня';hall=await module.createHall(renderer);ready=true;setView('entrance');applyStyle(preferences.style,false);hall.setLighting(preferences.lighting);hall.setPresidium(preferences.presidium);hall.setFlowers(preferences.flowers);hall.setTableDecor(preferences.tableDecor);hall.setDecor(preferences.decor);updateQuality();
+  const graphics=await import('./render-still.js?v=20261116-6');renderStill=graphics.renderStill;presentation=graphics.createPresentation(renderer,hall.scene,camera);updateQuality();
   renderer.shadowMap.needsUpdate=true;presentation.render(camera);drawMap();
   $('start-button').disabled=false;$('start-label').textContent='Войти в зал';$('load-status').textContent=coarse?'Управление касанием':'Управление мышью и клавиатурой';
   window.addEventListener('resize',resize);new ResizeObserver(resize).observe($('app'));
   canvas.addEventListener('webglcontextlost',event=>{event.preventDefault();failure('Графический контекст был потерян. Закройте лишние вкладки и обновите страницу.');});
   if(new URLSearchParams(location.search).has('qa'))window.__ARIADNA__={
    getState:()=>({ready,started,mode,position:{...position},yaw,pitch,preferences:{...preferences},...hall.stats(),lightSources:hall.lightSources(),drawCalls:renderer.info.render.calls,triangles:renderer.info.render.triangles,focus:document.activeElement?.id,keys:[...keys]}),
-   canStand:(x,z)=>canStand(x,z,.16,hall.chairObstacles),setView,setMode,applyStyle,start,
+   setPose:(x,z,angle,tilt)=>{position.x=x;position.z=z;yaw=angle;pitch=tilt;orientCamera();dirty=true;},
+   layout:()=>tableEditor.layout(),tablePoint:(id)=>{const t=guestTables.find(t=>t.id===id);if(!t)return null;const p=new THREE.Vector3(t.x,.78,t.z).project(planCamera);return{x:(p.x+1)*canvas.clientWidth/2,y:(1-p.y)*canvas.clientHeight/2};},canStand:(x,z)=>canStand(x,z,.16,hall.chairObstacles),setView,setMode,applyStyle,start,
    project:(x,y,z)=>{const p=new THREE.Vector3(x,y,z).project(mode==='plan'?planCamera:camera);return{x:(p.x+1)*canvas.clientWidth/2,y:(1-p.y)*canvas.clientHeight/2};},
    materials:()=>Object.fromEntries(['cloth','napkin','backdrop','drape','chair'].map(key=>[key,'#'+hall.materials[key].color.getHexString()])),
-   geometrySignature:()=>hall.geometrySignature(),gpu:()=>renderer.getContext().getParameter(renderer.getContext().getExtension('WEBGL_debug_renderer_info')?.UNMASKED_RENDERER_WEBGL||renderer.getContext().RENDERER),
+   flowerColors:()=>hall.flowerColors(),geometrySignature:()=>hall.geometrySignature(),gpu:()=>renderer.getContext().getParameter(renderer.getContext().getExtension('WEBGL_debug_renderer_info')?.UNMASKED_RENDERER_WEBGL||renderer.getContext().RENDERER),
    renderStill:async(options={})=>{renderJob=new AbortController();try{const blob=await renderStill(renderer,presentation,camera,options);return await new Promise(resolve=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.readAsDataURL(blob);});}finally{renderJob=null;updateQuality();dirty=true;}},
   };
   requestAnimationFrame(frame);

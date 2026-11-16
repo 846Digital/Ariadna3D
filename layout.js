@@ -32,12 +32,13 @@ export const views = {
   stage:{label:'Музыкальная сцена',x:12.65,z:7.6,lookX:16.3,lookZ:5.7,pitch:-.08},
 };
 export const obstacles = [
-  ...tables.map(t=>({kind:'circle',x:t.x,z:t.z,r:t.radius+.08})),
+  ...tables.map(t=>({kind:'circle',id:t.id,x:t.x,z:t.z,r:t.radius+.08})),
   ...columns.map(c=>({kind:'circle',...c,r:.33})),
-  {kind:'rect',x:longTable.x,z:longTable.z,w:2.72,d:.9},
+  {kind:'rect',id:'long-1',x:longTable.x,z:longTable.z,w:2.72,d:.9},
   {kind:'rect',x:headTable.x,z:headTable.z,w:.9,d:1.95},
   {kind:'rect',x:9.88,z:3.12,w:3.28,d:.92},
 ];
+export function updateTableObstacles(items){const fixed=obstacles.filter(o=>!o.id);obstacles.splice(0,obstacles.length,...items,...fixed);}
 export function insidePolygon(x,z,polygon=boundary) {
   let inside=false;
   for(let i=0,j=polygon.length-1;i<polygon.length;j=i++) {
