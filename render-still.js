@@ -1,21 +1,44 @@
 import * as THREE from './vendor/three.module.min.js';
-import {EffectComposer,RenderPass,GTAOPass,OutputPass} from './vendor/rendering.module.js';
+import {EffectComposer,RenderPass,GTAOPass,OutputPass,ShaderPass} from './vendor/rendering.module.js?v=20261117-7';
 
 export function createPresentation(renderer,scene,camera){
  const target=new THREE.WebGLRenderTarget(1,1,{type:THREE.HalfFloatType,samples:4});
  const composer=new EffectComposer(renderer,target),beauty=new RenderPass(scene,camera);
  const ao=new GTAOPass(scene,camera,512,512,undefined,{radius:.22,thickness:.14,distanceExponent:1,scale:1.0,samples:8},{radius:4,lumaPhi:8,depthPhi:3,normalPhi:4});
- ao.blendIntensity=.65;composer.addPass(beauty);composer.addPass(ao);composer.addPass(new OutputPass());
- let enabled=true,quality='auto',width=1,height=1,motionScale=1;
+ const glow=new ShaderPass({uniforms:{tDiffuse:{value:null},texel:{value:new THREE.Vector2(1,1)}},vertexShader:'varying vec2 vUv; void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',fragmentShader:`uniform sampler2D tDiffuse;uniform vec2 texel;varying vec2 vUv;
+ vec3 bright(vec2 p){return max(texture2D(tDiffuse,p).rgb-vec3(1.3),vec3(0.));}
+ void main(){vec3 c=texture2D(tDiffuse,vUv).rgb;vec2 d=texel*4.;vec3 b=bright(vUv+vec2(d.x,0.))+bright(vUv-vec2(d.x,0.))+bright(vUv+vec2(0.,d.y))+bright(vUv-vec2(0.,d.y));b+=bright(vUv+d)*.5+bright(vUv-d)*.5;gl_FragColor=vec4(c+b*.035,1.);}`});
+ ao.blendIntensity=.72;composer.addPass(beauty);composer.addPass(ao);composer.addPass(glow);composer.addPass(new OutputPass());
+ let enabled=true,quality='auto',width=1,height=1,motionScale=1,adaptive=.75,samples=0,elapsed=0,warmup=0,lastMoving=false,averageMs=0;
+ function configure(scale,moving=false){
+  motionScale=scale;const ratio=renderer.getPixelRatio()*scale;
+  composer.setPixelRatio(ratio);composer.setSize(width,height);
+  const edge=moving?480:quality==='high'?1100:800;
+  const aoScale=Math.min(.75,edge/Math.max(width*ratio,height*ratio));
+  ao.setSize(Math.max(1,Math.round(width*ratio*aoScale)),Math.max(1,Math.round(height*ratio*aoScale)));
+  glow.uniforms.texel.value.set(1/(width*ratio),1/(height*ratio));
+ }
  return{
-  resize(w,h){width=w;height=h;motionScale=1;composer.setPixelRatio(renderer.getPixelRatio());composer.setSize(w,h);ao.setSize(Math.max(1,Math.round(w*.75)),Math.max(1,Math.round(h*.75)));},
-  setQuality(value){quality=value;enabled=value!=='low';},
+  resize(w,h){width=w;height=h;configure(1);},
+  setQuality(value){if(quality!==value){adaptive=value==='high'?1:.75;samples=elapsed=warmup=0;}quality=value;enabled=value!=='low';configure(motionScale,lastMoving);},
+  recordFrame(ms,moving){
+   if(!moving||!lastMoving||quality==='low'){samples=elapsed=0;warmup=0;return;}
+   if(ms<5||ms>180)return;
+   warmup+=ms;if(warmup<500)return;
+   samples++;elapsed+=ms;
+   if(elapsed>1100&&samples>=15){averageMs=elapsed/samples;
+    if(averageMs>29&&adaptive>.55)adaptive=Math.max(.55,Math.round((adaptive-.1)*100)/100);
+    else if(averageMs<20&&adaptive<1)adaptive=Math.min(1,Math.round((adaptive+.05)*100)/100);
+    samples=elapsed=0;
+   }
+  },
+  info:()=>({quality,scale:motionScale,adaptive,averageMs:Math.round(averageMs*10)/10,output:[Math.round(width*renderer.getPixelRatio()),Math.round(height*renderer.getPixelRatio())],internal:[Math.round(width*renderer.getPixelRatio()*motionScale),Math.round(height*renderer.getPixelRatio()*motionScale)]}),
   render(camera,plan=false,moving=false){
+   scene.userData.cameraMoving=moving;
    if(plan||!enabled){renderer.render(scene,camera);return;}
-   // Preserve full detail when stopped; reduce only the moving preview's fill cost.
-   const scale=(quality==='auto'&&moving)?.75:1;
-   if(scale!==motionScale){motionScale=scale;composer.setPixelRatio(renderer.getPixelRatio()*scale);composer.setSize(width,height);ao.setSize(Math.max(1,Math.round(width*.75*scale)),Math.max(1,Math.round(height*.75*scale)));}
-   beauty.camera=camera;ao.camera=camera;ao.enabled=quality==='high'||!moving;composer.render();
+   const scale=moving?adaptive:1;
+   if(scale!==motionScale||moving!==lastMoving)configure(scale,moving);
+   lastMoving=moving;beauty.camera=camera;ao.camera=camera;ao.enabled=true;composer.render();
   },
  };
 }

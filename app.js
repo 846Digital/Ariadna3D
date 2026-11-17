@@ -1,7 +1,7 @@
-import {boundary,columns,headTable,views,canStand} from './layout.js?v=20261116-6';
+import {boundary,columns,headTable,views,canStand} from './layout.js?v=20261117-7';
 
-import {guestTables,seatCount} from './table-layout.js?v=20261116-6';
-import {createTableEditor,loadSeating} from './table-editor.js?v=20261116-6';
+import {guestTables,seatCount} from './table-layout.js?v=20261117-7';
+import {createTableEditor,loadSeating} from './table-editor.js?v=20261117-7';
 loadSeating();
 
 const $=id=>document.getElementById(id),canvas=$('scene');
@@ -9,7 +9,7 @@ const coarse=matchMedia('(pointer:coarse)').matches,reduced=matchMedia('(prefers
 const defaults={style:'reference',presidium:'original',flowers:'current',tableDecor:'flowers',lighting:'day',quality:'auto',speed:1,sensitivity:1,map:true,decor:true};
 let preferences={...defaults};
 try{preferences={...defaults,...JSON.parse(localStorage.getItem('ariadna-viewer-v1')||'{}')};}catch{}
-if(!['reference','rose','olive'].includes(preferences.style))preferences.style='reference';
+if(!['reference','rose','olive','pistachio'].includes(preferences.style))preferences.style='reference';
 if(!['original','new'].includes(preferences.presidium))preferences.presidium='original';
 if(!['flowers','candles'].includes(preferences.tableDecor))preferences.tableDecor='flowers';
 if(!['current','dopamine'].includes(preferences.flowers))preferences.flowers='current';
@@ -49,6 +49,8 @@ $('retry-button').addEventListener('click',()=>location.reload());
 $('dismiss-hint').addEventListener('click',()=>$('walk-hint').hidden=true);
 
 const references={
+ pistachio:['preview-pistachio.webp','Бежевые ткани и фисташковые акценты в 3D-зале','Бежевый и фисташковый. Одна геометрия с остальными палитрами.'],
+ pistachioPhoto:['reference-pistachio.webp','Новый референс: бежевые скатерти, фисташковая драпировка и розовые цветы','Ваш референс бежевого и фисташкового оформления.'],
  candlePreview:['preview-candles.webp','Гостевые столы со свечами в прозрачных цилиндрах','Кадр из модели: новый президиум и свечи на гостевых столах.'],
  candles:['reference-candles.jpg','Свечи в прозрачных цилиндрах разной высоты на молочной скатерти','Ваш новый референс настольных свечей.'],
  curtains:['reference-curtains.jpg','Новый президиум и шоколадная драпировка крупным планом','Дополнительный референс драпировки и свадебного стола.'],
@@ -66,7 +68,7 @@ const references={
  olive:['preview-olive.webp','Та же 3D-модель: оливковые ткани и шоколадные акценты','Олива и шоколад. Кадр из модели: меняются только цвета, геометрия и декор совпадают с исходным вариантом.'],
 };
 function selectReference(name){
- const [file,alt,caption]=references[name];$('reference-image').src='./assets/'+file+'?v=20261116-6';$('reference-image').alt=alt;$('reference-caption').textContent=caption;
+ const [file,alt,caption]=references[name];$('reference-image').src='./assets/'+file+'?v=20261117-7';$('reference-image').alt=alt;$('reference-caption').textContent=caption;
  for(const b of document.querySelectorAll('[data-reference]')){const active=b.dataset.reference===name;b.classList.toggle('selected',active);b.setAttribute('aria-pressed',String(active));}
 }
 for(const button of document.querySelectorAll('[data-reference]'))button.addEventListener('click',()=>selectReference(button.dataset.reference));
@@ -79,19 +81,20 @@ function updateSettingsUI(){
 }
 function updateQuality(){
  if(!renderer)return;
- const autoCap=Math.min(coarse?1.25:1.5,Math.sqrt((coarse?900000:1400000)/Math.max(1,canvas.clientWidth*canvas.clientHeight)));
- const cap=preferences.quality==='low'?1:preferences.quality==='high'?2:autoCap;
+ const pixels=Math.max(1,canvas.clientWidth*canvas.clientHeight);
+ const autoCap=Math.min(coarse?1.4:1.75,Math.sqrt((coarse?1050000:2100000)/pixels));
+ const cap=preferences.quality==='low'?Math.min(1,Math.sqrt(900000/pixels)):preferences.quality==='high'?Math.min(2,Math.sqrt((coarse?2200000:8294400)/pixels)):autoCap;
  renderer.setPixelRatio(Math.min(devicePixelRatio||1,cap));
  renderer.shadowMap.enabled=preferences.quality!=='low';renderer.shadowMap.needsUpdate=true;resize();
  presentation?.setQuality(preferences.quality);
  hall?.setQuality(preferences.quality);
 }
 function applyStyle(value,announce=true){
- if(!['reference','rose','olive'].includes(value))return;
+ if(!['reference','rose','olive','pistachio'].includes(value))return;
  preferences.style=value;if(hall)hall.setStyle(value);persist();dirty=true;
- const descriptions={reference:'Шоколад, молочный и белый',rose:'Пыльная роза, оливковый и белый',olive:'Оливковый, шоколад и тёплый белый'};
+ const descriptions={reference:'Шоколад, молочный и белый',rose:'Пыльная роза, оливковый и белый',olive:'Оливковый, шоколад и тёплый белый',pistachio:'Бежевый, фисташковый и нежно-розовый'};
  const palette=document.querySelector('.palette');palette.lastChild.textContent=' '+descriptions[value];
- const colors={reference:['#4b3024','#eadbc2','#f7f1e7'],rose:['#bc9094','#68714c','#f7f1e7'],olive:['#858767','#563b2e','#f7f1e7']};
+ const colors={reference:['#4b3024','#eadbc2','#f7f1e7'],rose:['#bc9094','#68714c','#f7f1e7'],olive:['#858767','#563b2e','#f7f1e7'],pistachio:['#e4d3b3','#a5b378','#e5b4bd']};
  palette.querySelectorAll('span').forEach((s,i)=>s.style.backgroundColor=colors[value][i]);
 }
 $('decor-style').addEventListener('change',event=>applyStyle(event.target.value));
@@ -263,7 +266,7 @@ $('render-start').addEventListener('click',async()=>{
  $('render-start').disabled=true;$('capture-quick').disabled=true;$('render-progress').hidden=false;$('render-cancel').hidden=false;$('render-save').hidden=true;$('render-preview').hidden=true;
  try{
   const edge=Number($('render-size').value),width=Math.round(camera.aspect>=1?edge:edge*camera.aspect),height=Math.round(camera.aspect>=1?edge/camera.aspect:edge),supersampling=Number($('render-samples').value);
-  presentation.resize(1,1);
+  presentation.resize(1,1);hall.setQuality('high');
   const blob=await renderStill(renderer,presentation,camera,{width,height,supersampling,signal:controller.signal,onProgress:(p,stage)=>{$('render-progress').value=p;$('render-status').textContent=stage+(p>0?' · '+Math.floor(p*100)+'%':'');}});
   if(renderPreviewURL)URL.revokeObjectURL(renderPreviewURL);renderPreviewURL=URL.createObjectURL(blob);
   $('render-preview').src=renderPreviewURL;$('render-preview').hidden=false;$('render-save').href=renderPreviewURL;$('render-save').download=`ariadna-${preferences.style}-${width}.png`;$('render-save').hidden=false;$('render-status').textContent=`Готово · ${width} × ${height} · PNG`;
@@ -275,7 +278,7 @@ function drawMap(){
  const c=$('minimap').getContext('2d'),w=456,h=280,s=25.2,ox=17,oy=12;
  const point=(x,z)=>[ox+x*s,oy+z*s];c.clearRect(0,0,w,h);c.fillStyle='#ece7dc';c.fillRect(0,0,w,h);
  c.beginPath();boundary.forEach(([x,z],i)=>i?c.lineTo(...point(x,z)):c.moveTo(...point(x,z)));c.closePath();c.fillStyle='#faf7ef';c.fill();c.strokeStyle='#8e7f6a';c.lineWidth=2.5;c.stroke();
- const color=preferences.style==='rose'?'#bc9094':preferences.style==='olive'?'#858767':'#d5c7b0';
+ const color=({rose:'#bc9094',olive:'#858767',pistachio:'#e4d3b3'})[preferences.style]||'#d5c7b0';
  c.fillStyle=color;c.strokeStyle='#8d7d65';c.lineWidth=1;
  for(const t of guestTables.filter(t=>t.type==='round')){const [x,y]=point(t.x,t.z);c.beginPath();c.arc(x,y,t.radius*s,0,Math.PI*2);c.fill();c.stroke();}
  for(const t of [...guestTables.filter(t=>t.type==='long').map(t=>({...t,w:t.width,d:t.depth})),{...headTable,w:headTable.width,d:headTable.depth}]){const [x,y]=point(t.x-t.w/2,t.z-t.d/2);c.fillRect(x,y,t.w*s,t.d*s);c.strokeRect(x,y,t.w*s,t.d*s);}
@@ -287,8 +290,9 @@ function drawMap(){
 function frame(time){
  requestAnimationFrame(frame);if(!ready||renderingFailed||document.hidden||renderJob)return;
  const dt=lastTime?Math.min((time-lastTime)/1000,.05):.016;lastTime=time;
- move(dt);
- const moving=time<detailRestoreAt||keys.size>0||Math.abs(joystick.x)+Math.abs(joystick.y)>.01;
+ const cameraMoving=move(dt);
+ const moving=cameraMoving||time<detailRestoreAt||keys.size>0||Math.abs(joystick.x)+Math.abs(joystick.y)>.01;
+ presentation.recordFrame(dt*1000,moving);
  if(!moving&&!detailSettled){dirty=true;detailSettled=true;}
  if(dirty){
   try{presentation.render(mode==='plan'?planCamera:camera,mode==='plan',moving);}catch(error){console.error(error);failure('Браузеру не удалось отрисовать зал. Обновите страницу или попробуйте другой браузер.');return;}
@@ -299,7 +303,7 @@ function frame(time){
 
 async function boot(){
  try{
-  const module=await import('./scene.js?v=20261116-6');THREE=module.THREE;
+  const module=await import('./scene.js?v=20261117-7');THREE=module.THREE;
   renderer=new THREE.WebGLRenderer({canvas,antialias:!coarse,alpha:false,powerPreference:'high-performance',preserveDrawingBuffer:true});
   renderer.debug.onShaderError=(gl,program,vertex,fragment)=>{const report={program:gl.getProgramInfoLog(program),vertex:gl.getShaderInfoLog(vertex),fragment:gl.getShaderInfoLog(fragment)};console.error(JSON.stringify(report));throw new Error('Графический процессор не смог подготовить рендер');};
   renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.12;
@@ -307,19 +311,19 @@ async function boot(){
   camera=new THREE.PerspectiveCamera(60,1,.045,70);planCamera=new THREE.OrthographicCamera(-10,10,6,-6,.1,80);planCamera.up.set(0,0,-1);planCamera.position.set(8.37,30,5);planCamera.lookAt(8.37,0,5);
   $('load-status').textContent='Расставляем мебель и свадебный декор';await new Promise(resolve=>requestAnimationFrame(resolve));
   $('load-status').textContent='Загружаем материалы тканей и камня';hall=await module.createHall(renderer);ready=true;setView('entrance');applyStyle(preferences.style,false);hall.setLighting(preferences.lighting);hall.setPresidium(preferences.presidium);hall.setFlowers(preferences.flowers);hall.setTableDecor(preferences.tableDecor);hall.setDecor(preferences.decor);updateQuality();
-  const graphics=await import('./render-still.js?v=20261116-6');renderStill=graphics.renderStill;presentation=graphics.createPresentation(renderer,hall.scene,camera);updateQuality();
+  const graphics=await import('./render-still.js?v=20261117-7');renderStill=graphics.renderStill;presentation=graphics.createPresentation(renderer,hall.scene,camera);updateQuality();
   renderer.shadowMap.needsUpdate=true;presentation.render(camera);drawMap();
   $('start-button').disabled=false;$('start-label').textContent='Войти в зал';$('load-status').textContent=coarse?'Управление касанием':'Управление мышью и клавиатурой';
   window.addEventListener('resize',resize);new ResizeObserver(resize).observe($('app'));
   canvas.addEventListener('webglcontextlost',event=>{event.preventDefault();failure('Графический контекст был потерян. Закройте лишние вкладки и обновите страницу.');});
   if(new URLSearchParams(location.search).has('qa'))window.__ARIADNA__={
-   getState:()=>({ready,started,mode,position:{...position},yaw,pitch,preferences:{...preferences},...hall.stats(),lightSources:hall.lightSources(),drawCalls:renderer.info.render.calls,triangles:renderer.info.render.triangles,focus:document.activeElement?.id,keys:[...keys]}),
+   getState:()=>({ready,started,mode,position:{...position},yaw,pitch,preferences:{...preferences},...hall.stats(),lightSources:hall.lightSources(),presentation:presentation?.info?.(),drawCalls:renderer.info.render.calls,triangles:renderer.info.render.triangles,focus:document.activeElement?.id,keys:[...keys]}),
    setPose:(x,z,angle,tilt)=>{position.x=x;position.z=z;yaw=angle;pitch=tilt;orientCamera();dirty=true;},
    layout:()=>tableEditor.layout(),tablePoint:(id)=>{const t=guestTables.find(t=>t.id===id);if(!t)return null;const p=new THREE.Vector3(t.x,.78,t.z).project(planCamera);return{x:(p.x+1)*canvas.clientWidth/2,y:(1-p.y)*canvas.clientHeight/2};},canStand:(x,z)=>canStand(x,z,.16,hall.chairObstacles),setView,setMode,applyStyle,start,
    project:(x,y,z)=>{const p=new THREE.Vector3(x,y,z).project(mode==='plan'?planCamera:camera);return{x:(p.x+1)*canvas.clientWidth/2,y:(1-p.y)*canvas.clientHeight/2};},
    materials:()=>Object.fromEntries(['cloth','napkin','backdrop','drape','chair'].map(key=>[key,'#'+hall.materials[key].color.getHexString()])),
    flowerColors:()=>hall.flowerColors(),geometrySignature:()=>hall.geometrySignature(),gpu:()=>renderer.getContext().getParameter(renderer.getContext().getExtension('WEBGL_debug_renderer_info')?.UNMASKED_RENDERER_WEBGL||renderer.getContext().RENDERER),
-   renderStill:async(options={})=>{renderJob=new AbortController();try{const blob=await renderStill(renderer,presentation,camera,options);return await new Promise(resolve=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.readAsDataURL(blob);});}finally{renderJob=null;updateQuality();dirty=true;}},
+   renderStill:async(options={})=>{renderJob=new AbortController();try{hall.setQuality('high');const blob=await renderStill(renderer,presentation,camera,options);return await new Promise(resolve=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.readAsDataURL(blob);});}finally{renderJob=null;updateQuality();dirty=true;}},
   };
   requestAnimationFrame(frame);
  }catch(error){console.error(error);failure('Не удалось загрузить 3D-зал. Проверьте, что все файлы загружены на GitHub Pages, и откройте страницу в современном браузере с WebGL 2.');}
