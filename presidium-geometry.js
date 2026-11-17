@@ -35,3 +35,25 @@ export function tableSwag(width=.93){
   return [(u-.5)*width,.735-(.27+.24*v)*sag,.02+.065*Math.sin(v*Math.PI)*sag+.015*Math.sin(v*Math.PI*14)*sag];
  });
 }
+
+// Four broad festoons meet at gathered points. Each is a continuous sheet:
+// the folds follow the hanging lower edge, rather than separate rope-like arcs.
+export function gatheredFestoon(side,outer=false){
+ const start=outer?1.57:0,end=outer?2.325:1.57;
+ const startY=outer?1.78:2.88,endY=outer?1.04:1.78,sag=outer?.32:.64;
+ return surface(112,64,(u,v)=>{
+  const hanging=Math.sin(u*Math.PI),hem=startY*(1-u)+endY*u-sag*Math.pow(hanging,.84);
+  const top=2.96,phase=v*Math.PI*15+.26*Math.sin(u*5)+u*.33;
+  const gathering=Math.pow(hanging,.6)*(.22+.78*Math.sin(v*Math.PI/2));
+  const fold=(Math.sin(phase)+.24*Math.sin(phase*2+.4))*.065*gathering;
+  const vertical=.014*Math.sin(u*57+.5*Math.sin(v*4))*(1-v)*.6;
+  return [side*(start+u*(end-start)),top+(hem-top)*v,.13+fold+vertical+.045*hanging];
+ });
+}
+
+export function fabricGather(){
+ return surface(48,16,(u,v)=>{
+  const a=u*Math.PI*2,b=v*Math.PI*2,r=.042+.012*Math.cos(b)+.006*Math.sin(a*9);
+  return [Math.cos(a)*r,Math.sin(a)*r*.76,.012*Math.sin(b)];
+ });
+}

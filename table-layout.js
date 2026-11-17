@@ -1,4 +1,4 @@
-import {tables,longTable,headTable,columns,boundary,insidePolygon} from './layout.js?v=20261117-7';
+import {tables,longTable,headTable,columns,boundary,insidePolygon} from './layout.js?v=20261117-9';
 
 const copy=value=>JSON.parse(JSON.stringify(value));
 export function chairsFor(t,count=t.seats){

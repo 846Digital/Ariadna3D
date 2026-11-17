@@ -2,15 +2,15 @@ import * as THREE from './vendor/three.module.min.js';
 
 // Closed padded shell: the same sweep forms the back and the lowered armrests.
 // All dimensions are in metres. Its surfaces remain curved at close range.
-function shellTop(a,arms){const u=Math.max(0,Math.min(1,(Math.abs(a)-.73)/.92));return arms?1.01-.34*u*u*(3-2*u):.98+.018*Math.cos(a);}
+function shellTop(a,arms){const u=Math.max(0,Math.min(1,(Math.abs(a)-.86)/.79));return arms?.965-.29*u*u*(3-2*u):.95+.018*Math.cos(a);}
 export function upholsteredShell(arms=true){
  const p=[],uv=[],idx=[],N=32,R=16,span=arms?1.65:1.10;
  for(let i=0;i<=N;i++)for(let j=0;j<=R;j++){
   const a=(i/N-.5)*span*2,t=j/R*Math.PI*2;
   const top=shellTop(a,arms);
   const bottom=.455,mid=(top+bottom)/2,half=(top-bottom)/2;
-  const radial=.029*Math.sin(t),r=.292+radial;
-  p.push(r*Math.sin(a),mid+half*Math.cos(t),.055-r*Math.cos(a)-.035*(Math.cos(t)+1)/2);
+  const radial=.025*Math.sin(t),r=.302+radial;
+  p.push(r*Math.sin(a),mid+half*Math.cos(t),.055-r*.91*Math.cos(a)-.047*(Math.cos(t)+1)/2);
   uv.push(i/N*1.8,j/R*2);
   if(i<N&&j<R){const k=i*(R+1)+j;idx.push(k,k+1,k+R+1,k+1,k+R+2,k+R+1);}
  }
@@ -18,7 +18,7 @@ export function upholsteredShell(arms=true){
  for(const i of [0,N]){
   const start=p.length/3,a=(i/N-.5)*span*2;
   const top=shellTop(a,arms);
-  p.push(.292*Math.sin(a),(top+.455)/2,.055-.292*Math.cos(a)-.0175);uv.push(.5,.5);
+  p.push(.302*Math.sin(a),(top+.455)/2,.055-.302*.91*Math.cos(a)-.0235);uv.push(.5,.5);
   for(let j=0;j<R;j++){const k=i*(R+1)+j;if(i===0)idx.push(start,k+1,k);else idx.push(start,k,k+1);}
  }
  for(let i=0;i<idx.length;i+=3){const b=idx[i+1];idx[i+1]=idx[i+2];idx[i+2]=b;}
@@ -29,7 +29,7 @@ export function shellSeam(arms=true){
  const span=arms?1.65:1.10;
  return Array.from({length:65},(_,i)=>{
   const a=(i/64-.5)*span*2,top=shellTop(a,arms);
-  return[.294*Math.sin(a),top-.005,.055-.294*Math.cos(a)-.035];
+  return[.304*Math.sin(a),top-.005,.055-.304*.91*Math.cos(a)-.047];
  });
 }
 
@@ -79,6 +79,23 @@ export function foldedNapkin(){
  g.computeVertexNormals();return g;
 }
 
+export function drapedNapkin(){
+ const g=new THREE.PlaneGeometry(.24,.62,24,56),p=g.attributes.position;
+ for(let i=0;i<p.count;i++){
+  const x=p.getX(i),s=p.getY(i)+.20;
+  const ripple=.005*Math.sin(x*90+s*7)+.002*Math.sin(x*167-s*4);
+  let z=s,y=.026+ripple;
+  if(s>.20){const d=s-.20;if(d<.045){const a=d/.045*Math.PI/2;z=.20+.028*Math.sin(a);y=.026-.028*(1-Math.cos(a))+ripple;}else{z=.228+ripple*1.4+.012*Math.sin(d*8);y=-.002-(d-.045);}}
+  p.setXYZ(i,x*(.88+.10*Math.sin(s*5)),y,z);
+ }
+ g.computeVertexNormals();return g;
+}
+
+export function anthuriumPetal(){
+ const shape=new THREE.Shape();shape.moveTo(0,-.055);shape.bezierCurveTo(-.025,-.025,-.074,.005,-.055,.040);shape.bezierCurveTo(-.036,.072,-.006,.052,0,.035);shape.bezierCurveTo(.010,.061,.045,.067,.060,.037);shape.bezierCurveTo(.078,.006,.027,-.025,0,-.055);
+ const g=new THREE.ShapeGeometry(shape,10),p=g.attributes.position;for(let i=0;i<p.count;i++){const x=p.getX(i),y=p.getY(i);p.setZ(i,.011*(1-Math.abs(x)/.075)+.010*Math.sin(y*24));}g.computeVertexNormals();return g;
+}
+
 export function pooledFabric(width,depth){
  const p=[],uv=[],idx=[],N=72,R=48;
  for(let j=0;j<=R;j++)for(let i=0;i<=N;i++){
@@ -95,9 +112,10 @@ export function gatheredTableFront(width,height){
  const p=[],uv=[],idx=[],N=180,R=48;
  for(let j=0;j<=R;j++)for(let i=0;i<=N;i++){
   const u=i/N,v=j/R,x=(u-.5)*width;
-  const fold=Math.sin(u*Math.PI*58)+.27*Math.sin(u*Math.PI*116+.25);
+  const phase=u*Math.PI*36+.55*Math.sin(u*13)+v*.14*Math.sin(u*19);
+  const fold=Math.sin(phase)+.24*Math.sin(phase*2+.25)+.13*Math.sin(u*127+v*.4);
   const fall=height*v;
-  p.push(x*(1+.09*Math.pow(v,3)),height-fall+.009*Math.sin(u*91)*v,.025+(.008+.034*v)*fold+.16*Math.pow(v,8));
+  p.push(x*(1+.09*Math.pow(v,3)),height-fall+.012*Math.sin(u*39)*v,.025+(.005+.043*Math.pow(v,.7))*fold+.12*Math.pow(v,8));
   uv.push(u*3,v*2);
   if(j<R&&i<N){const k=j*(N+1)+i;idx.push(k,k+N+1,k+1,k+1,k+N+1,k+N+2);}
  }

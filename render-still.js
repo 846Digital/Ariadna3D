@@ -1,10 +1,10 @@
 import * as THREE from './vendor/three.module.min.js';
-import {EffectComposer,RenderPass,GTAOPass,OutputPass,ShaderPass} from './vendor/rendering.module.js?v=20261117-7';
+import {EffectComposer,RenderPass,GTAOPass,OutputPass,ShaderPass} from './vendor/rendering.module.js?v=20261117-9';
 
 export function createPresentation(renderer,scene,camera){
  const target=new THREE.WebGLRenderTarget(1,1,{type:THREE.HalfFloatType,samples:4});
  const composer=new EffectComposer(renderer,target),beauty=new RenderPass(scene,camera);
- const ao=new GTAOPass(scene,camera,512,512,undefined,{radius:.22,thickness:.14,distanceExponent:1,scale:1.0,samples:8},{radius:4,lumaPhi:8,depthPhi:3,normalPhi:4});
+ const ao=new GTAOPass(scene,camera,512,512,undefined,{radius:.38,thickness:.16,distanceExponent:1,scale:1.0,samples:8},{radius:4,lumaPhi:8,depthPhi:3,normalPhi:4});
  const glow=new ShaderPass({uniforms:{tDiffuse:{value:null},texel:{value:new THREE.Vector2(1,1)}},vertexShader:'varying vec2 vUv; void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',fragmentShader:`uniform sampler2D tDiffuse;uniform vec2 texel;varying vec2 vUv;
  vec3 bright(vec2 p){return max(texture2D(tDiffuse,p).rgb-vec3(1.3),vec3(0.));}
  void main(){vec3 c=texture2D(tDiffuse,vUv).rgb;vec2 d=texel*4.;vec3 b=bright(vUv+vec2(d.x,0.))+bright(vUv-vec2(d.x,0.))+bright(vUv+vec2(0.,d.y))+bright(vUv-vec2(0.,d.y));b+=bright(vUv+d)*.5+bright(vUv-d)*.5;gl_FragColor=vec4(c+b*.035,1.);}`});
@@ -34,6 +34,7 @@ export function createPresentation(renderer,scene,camera){
   },
   info:()=>({quality,scale:motionScale,adaptive,averageMs:Math.round(averageMs*10)/10,output:[Math.round(width*renderer.getPixelRatio()),Math.round(height*renderer.getPixelRatio())],internal:[Math.round(width*renderer.getPixelRatio()*motionScale),Math.round(height*renderer.getPixelRatio()*motionScale)]}),
   render(camera,plan=false,moving=false){
+   if(!plan)scene.userData.updateContactShadows?.();
    scene.userData.cameraMoving=moving;
    if(plan||!enabled){renderer.render(scene,camera);return;}
    const scale=moving?adaptive:1;

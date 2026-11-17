@@ -6,6 +6,7 @@ const NX=48,NY=14,NZ=32,VALUES=NX*4*NY*NZ*4;
 const declarations=`
 uniform highp sampler3D venueLight;
 uniform sampler2D venueSurface;
+uniform float venueBounceStrength;
 varying vec3 vVenueWorld;
 vec3 venueIrradiance(vec3 normalWorld){
  vec3 result=vec3(0.);
@@ -29,7 +30,7 @@ vec3 venueIrradiance(vec3 normalWorld){
  vec3 cz=texture(venueLight,p).rgb;
  result=max(c0+cx*normalWorld.x+cy*normalWorld.y+cz*normalWorld.z,c0*.12);
  }
- return result;
+ return result*venueBounceStrength;
 }`;
 
 export async function createIrradiance(){
@@ -37,7 +38,7 @@ export async function createIrradiance(){
  if(!response.ok)throw new Error('Не загрузилось освещение зала');
  const buffer=await response.arrayBuffer();
  if(buffer.byteLength!==VALUES*2*2)throw new Error('Неполная карта освещения');
- const attached=new WeakSet(),cache=new Map(),volumeUniform={value:null},surfaceUniform={value:null};
+ const attached=new WeakSet(),cache=new Map(),volumeUniform={value:null},surfaceUniform={value:null},strengthUniform={value:.72};
  const surfaceResponse=await fetch('./assets/surface-irradiance.bin');if(!surfaceResponse.ok)throw new Error('Не загрузилось освещение поверхностей');
  const surfaceBuffer=await surfaceResponse.arrayBuffer(),surfaceValues=192*224*4;
  if(surfaceBuffer.byteLength!==surfaceValues*4)throw new Error('Неполная карта поверхностей');
@@ -47,6 +48,7 @@ export async function createIrradiance(){
  const blend=(bases,weights)=>{const data=new Uint16Array(bases[0].length);for(let i=0;i<data.length;i++)data[i]=THREE.DataUtils.toHalfFloat(bases[0][i]*weights[0]+bases[1][i]*weights[1]);return data;};
  function setLighting(mode){
   mode=modes[mode]?mode:'day';weights=modes[mode];
+  strengthUniform.value=mode==='day'?.72:mode==='windows'?.68:1;
   if(!cache.has(mode)){
    const volume=new THREE.Data3DTexture(blend(volumeBases,weights),NX*4,NY,NZ);volume.format=THREE.RGBAFormat;volume.type=THREE.HalfFloatType;volume.minFilter=volume.magFilter=THREE.LinearFilter;volume.unpackAlignment=1;volume.needsUpdate=true;
    const surface=new THREE.DataTexture(blend(surfaceBases,weights),192,224,THREE.RGBAFormat,THREE.HalfFloatType);surface.minFilter=surface.magFilter=THREE.LinearFilter;surface.needsUpdate=true;
@@ -60,7 +62,7 @@ export async function createIrradiance(){
    if(!material?.isMeshStandardMaterial||attached.has(material))return;
    attached.add(material);
    material.onBeforeCompile=shader=>{
-    shader.uniforms.venueLight=volumeUniform;shader.uniforms.venueSurface=surfaceUniform;
+    shader.uniforms.venueLight=volumeUniform;shader.uniforms.venueSurface=surfaceUniform;shader.uniforms.venueBounceStrength=strengthUniform;
     shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nvarying vec3 vVenueWorld;');
     shader.vertexShader=shader.vertexShader.replace('#include <project_vertex>',`#include <project_vertex>
      vec4 venuePosition=vec4(transformed,1.);

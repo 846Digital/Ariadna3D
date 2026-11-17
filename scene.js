@@ -1,17 +1,20 @@
 import * as THREE from './vendor/three.module.min.js';
-import {createIrradiance} from './irradiance.js?v=20261117-7';
-import {guestTables,seatCount} from './table-layout.js?v=20261117-7';
+import {createIrradiance} from './irradiance.js?v=20261117-9';
+import {createExterior} from './exterior.js?v=20261117-9';
+import {createContactShadows} from './contact-shadows.js?v=20261117-9';
+import {guestTables,seatCount} from './table-layout.js?v=20261117-9';
 import {Reflector} from './vendor/Reflector.js';
-import {partedCurtain,curtainSwag,tableSwag} from './presidium-geometry.js?v=20261117-7';
-import {addMusicStage} from './venue-details.js?v=20261117-7';
-import {upholsteredShell,shellSeam,cushion,petal,leafGeometry,foldedNapkin,pooledFabric,gatheredTableFront,suspendedSwag} from './detail-geometry.js?v=20261117-7';
-import {boundary,HEIGHT,columns,headTable} from './layout.js?v=20261117-7';
+import {partedCurtain,curtainSwag,tableSwag,gatheredFestoon,fabricGather} from './presidium-geometry.js?v=20261117-9';
+import {addMusicStage} from './venue-details.js?v=20261117-9';
+import {upholsteredShell,shellSeam,cushion,petal,leafGeometry,foldedNapkin,drapedNapkin,anthuriumPetal,pooledFabric,gatheredTableFront,suspendedSwag} from './detail-geometry.js?v=20261117-9';
+import {boundary,HEIGHT,columns,headTable} from './layout.js?v=20261117-9';
 
 export const palettes={
  reference:{name:'По фотографии',cloth:'#eadbc2',napkin:'#4b3024',backdrop:'#eee0c8',drape:'#4c2d1e',pink:'#f2e9df',green:'#e7e6d8'},
  rose:{name:'Пыльная роза',cloth:'#bc9094',napkin:'#68714c',backdrop:'#c69ea2',drape:'#707853',pink:'#d6a5b1',green:'#829267'},
  olive:{name:'Олива и шоколад',cloth:'#858767',napkin:'#563b2e',backdrop:'#a2a58a',drape:'#563a2c',pink:'#d1bcab',green:'#7d8d62'},
  pistachio:{name:'Бежевый и фисташковый',cloth:'#e4d3b3',napkin:'#a5b378',backdrop:'#eadcc4',drape:'#a0ac71',white:'#f3d5d3',pink:'#e5b4bd',green:'#a4bb75'},
+ milk:{name:'Молочный и фисташковый',cloth:'#eee1ca',napkin:'#a2b077',backdrop:'#f0e5d2',drape:'#9da96d',white:'#f4d5d4',pink:'#e3a5b5',green:'#8da65d'},
 };
 
 const geometries=new Map();
@@ -80,6 +83,28 @@ function instanceStatic(root){
  }
 }
 
+// Unique light filaments have different curves but share three materials. Bake
+// their transforms into a few buffers so their detail costs no extra draw calls.
+function mergeStatic(root){
+ root.updateMatrixWorld(true);const inverse=root.matrixWorld.clone().invert(),buckets=new Map(),remove=[];
+ root.traverse(o=>{
+  if(!o.isMesh||o.isInstancedMesh||o.userData.unbatched||Array.isArray(o.material))return;
+  const key=o.material.uuid+'-'+!!o.userData.shadow;
+  if(!buckets.has(key))buckets.set(key,{material:o.material,shadow:!!o.userData.shadow,p:[],n:[],uv:[],idx:[]});
+  const b=buckets.get(key),g=o.geometry.clone().applyMatrix4(inverse.clone().multiply(o.matrixWorld)),offset=b.p.length/3;
+  b.p.push(...g.attributes.position.array);if(g.attributes.normal)b.n.push(...g.attributes.normal.array);
+  if(g.attributes.uv)b.uv.push(...g.attributes.uv.array);else for(let i=0;i<g.attributes.position.count;i++)b.uv.push(0,0);
+  if(g.index)for(const k of g.index.array)b.idx.push(k+offset);else for(let i=0;i<g.attributes.position.count;i++)b.idx.push(i+offset);
+  g.dispose();remove.push(o);
+ });
+ for(const o of remove)o.removeFromParent();
+ for(const b of buckets.values()){
+  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(b.p,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(b.uv,2));g.setIndex(b.idx);
+  if(b.n.length===b.p.length)g.setAttribute('normal',new THREE.Float32BufferAttribute(b.n,3));else g.computeVertexNormals();
+  const o=new THREE.Mesh(g,b.material);o.userData.shadow=b.shadow;root.add(o);
+ }
+}
+
 function pleatedPlane(width,height,folds,amplitude=.028){
  const geo=new THREE.PlaneGeometry(width,height,Math.ceil(folds*9),20);
  const pos=geo.attributes.position;
@@ -93,13 +118,18 @@ function pleatedPlane(width,height,folds,amplitude=.028){
 }
 
 function roundCloth(radius,height){
- const positions=[],uvs=[],indices=[],segments=112,rows=18;
+ const positions=[],uvs=[],indices=[],segments=160,rows=44;
  for(let y=0;y<=rows;y++)for(let i=0;i<=segments;i++){
   const t=i/segments*Math.PI*2,v=y/rows;
-  const drop=(height-.055)*v;
-  const phase=t*18+.28*Math.sin(t*5);
-  const r=radius+.014+v*.022+Math.pow(v,.55)*(.034+.025*Math.sin(phase)+.011*Math.sin(t*29+.4*Math.cos(t*7)));
-  positions.push(Math.sin(t)*r,height-drop+.008*Math.sin(t*24)*v,Math.cos(t)*r);uvs.push(i/segments*3,v);
+  const phase=t*11+.42*Math.sin(t*3)+.18*Math.sin(t*7);
+  const amplitude=.007+.075*Math.pow(v,.74);
+  const folds=Math.sin(phase)+.28*Math.sin(phase*2+.45)+.13*Math.sin(t*23+v*.65);
+  const r=radius+.003+.008*Math.sin(v*Math.PI/2)+.055*v*v+amplitude*folds;
+  const hem=.035+.025*(1+Math.sin(t*4+.3))+.016*Math.sin(t*7);
+  positions.push(Math.sin(t)*r,height-(height-hem)*v+.008*Math.sin(t*8)*v*v,Math.cos(t)*r);
+  // Grain follows the original flat circular cloth, rather than horizontal bands.
+  const materialRadius=radius+v*(height-.04);
+  uvs.push(.5+Math.sin(t)*materialRadius/2.8,.5+Math.cos(t)*materialRadius/2.8);
   if(y<rows&&i<segments){const a=y*(segments+1)+i,b=a+segments+1;indices.push(a,b,a+1,b,b+1,a+1);}
  }
  const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));geo.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));geo.setIndex(indices);geo.computeVertexNormals();return geo;
@@ -149,10 +179,11 @@ function ruffle(){
 
 export async function createHall(renderer){
  seed=7463;
+ let contactShadows=null;
  const scene=new THREE.Scene();scene.background=new THREE.Color('#bcb4a2');
  const room=new THREE.Group(),ceiling=new THREE.Group(),lightsVisual=new THREE.Group(),decor=new THREE.Group(),flowersRef=new THREE.Group(),flowersSubtle=new THREE.Group(),referenceExtras=new THREE.Group(),planWalls=new THREE.Group();
- const draperyReference=new THREE.Group(),draperyNew=new THREE.Group(),presidiumFlowersOriginal=new THREE.Group(),presidiumFlowersNew=new THREE.Group();
- scene.add(room,ceiling,lightsVisual,decor,flowersRef,flowersSubtle,referenceExtras,planWalls,draperyReference,draperyNew,presidiumFlowersOriginal,presidiumFlowersNew);planWalls.visible=false;
+ const draperyReference=new THREE.Group(),draperyNew=new THREE.Group(),draperyPistachio=new THREE.Group(),presidiumFlowersOriginal=new THREE.Group(),presidiumFlowersNew=new THREE.Group();
+ scene.add(room,ceiling,lightsVisual,decor,flowersRef,flowersSubtle,referenceExtras,planWalls,draperyReference,draperyNew,draperyPistachio,presidiumFlowersOriginal,presidiumFlowersNew);planWalls.visible=false;
  const fabric=proceduralTexture('fabric'),stone=proceduralTexture('stone'),plaster=proceduralTexture('plaster');
  const textureLoader=new THREE.TextureLoader();
  const textures={};
@@ -168,13 +199,13 @@ export async function createHall(renderer){
  // Sample only the unobstructed botanical wall, not furniture or equipment.
  stageWallMap.offset.set(.674,.50);stageWallMap.repeat.set(.16,.105);stageWallMap.anisotropy=4;
  for(const [key,file,rx,ry,color] of [['floorColor','stone-color',16.74/2.6,10/2.6,true],['floorNormal','stone-normal',16.74/2.6,10/2.6,false],['floorRough','stone-roughness',16.74/2.6,10/2.6,false],['velvetColor','upholstery-nap',1.5,1.5,true],['plasterColor','plaster-color',2,2,true]]){
-  const t=await textureLoader.loadAsync('./assets/'+file+'.webp');t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(rx,ry);t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());if(color)t.colorSpace=THREE.SRGBColorSpace;textures[key]?.dispose();textures[key]=t;
+  const t=await textureLoader.loadAsync('./assets/'+file+'.webp?v=20261117-9');t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(key.startsWith('floor')?16.74/2.4:rx,key.startsWith('floor')?10/2.4:ry);t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());if(color)t.colorSpace=THREE.SRGBColorSpace;textures[key]?.dispose();textures[key]=t;
  }
  const standard=(color,roughness=.8,extra={})=>new THREE.MeshStandardMaterial({color,roughness,...extra});
- const cloth=(color)=>new THREE.MeshPhysicalMaterial({color,roughness:.91,side:THREE.DoubleSide,normalMap:textures.fabricNormal,normalScale:new THREE.Vector2(.15,.15),roughnessMap:textures.fabricRough,sheen:.36,sheenRoughness:.85,sheenColor:'#f4eadd'});
+ const cloth=(color)=>new THREE.MeshPhysicalMaterial({color,roughness:.72,side:THREE.DoubleSide,normalMap:textures.fabricNormal,normalScale:new THREE.Vector2(.085,.085),roughnessMap:textures.fabricRough,sheen:.65,sheenRoughness:.72,sheenColor:'#f4eadd'});
  const m={
   wall:standard('#dcd3c4',.93,{map:textures.plasterColor,normalMap:textures.plasterNormal,normalScale:new THREE.Vector2(.08,.08),roughnessMap:textures.plasterRough}),ceiling:standard('#eeeae1'),trim:standard('#eeeae0',.66),
-  floor:standard('#ffffff',.76,{map:textures.floorColor,normalMap:textures.floorNormal,normalScale:new THREE.Vector2(.22,.22),roughnessMap:textures.floorRough}),
+  floor:standard('#ffffff',.55,{map:textures.floorColor,normalMap:textures.floorNormal,normalScale:new THREE.Vector2(.12,.12),roughnessMap:textures.floorRough,envMapIntensity:1.4}),
   chair:new THREE.MeshPhysicalMaterial({color:'#665044',roughness:.94,map:textures.velvetColor,normalMap:textures.velvetNormal,normalScale:new THREE.Vector2(.16,.16),roughnessMap:textures.velvetRough,aoMap:textures.velvetAO,aoMapIntensity:.32,sheen:.42,sheenRoughness:.88,sheenColor:'#8e7566'}),piping:standard('#574238',.78),
   dark:standard('#25231f',.6),wood:standard('#30231c',.62),gold:standard('#af8850',.27,{metalness:.78}),silver:standard('#b7b8ad',.23,{metalness:.85}),
   ceramic:standard('#f1eee3',.22),plateInner:standard('#e5e1d4',.3),
@@ -183,7 +214,7 @@ export async function createHall(renderer){
   flowerWhite:new THREE.MeshPhysicalMaterial({color:'#fffdf5',roughness:.58,side:THREE.DoubleSide,sheen:.4,sheenColor:'#fff9eb'}),flowerPink:standard(palettes.reference.pink,.7,{side:THREE.DoubleSide}),flowerGreen:standard(palettes.reference.green,.77,{side:THREE.DoubleSide}),pollen:standard('#c7a346',.65),
   glass:new THREE.MeshPhysicalMaterial({color:'#ffffff',roughness:.035,metalness:0,transmission:0,thickness:.002,clearcoat:.18,clearcoatRoughness:.04,ior:1.46,transparent:true,opacity:.35,side:THREE.DoubleSide,forceSinglePass:true,depthWrite:false}),
   glassRim:standard('#dce8de',.1,{metalness:.35,transparent:true,opacity:.42,depthWrite:false}),
-  mirror:standard('#a9b4ad',.08,{metalness:.95}),window:new THREE.MeshBasicMaterial({color:'#dbe8e7',transparent:true,opacity:.7,side:THREE.DoubleSide}),
+  mirror:standard('#a9b4ad',.08,{metalness:.95}),window:new THREE.MeshPhysicalMaterial({color:'#dbe8e7',roughness:.035,metalness:0,ior:1.46,clearcoat:1,clearcoatRoughness:.025,transparent:true,opacity:.055,side:THREE.DoubleSide,forceSinglePass:true,depthWrite:false}),
   glow:new THREE.MeshBasicMaterial({color:'#ffe3a6'}),shade:standard('#fff1d7',.8,{emissive:'#f9dfac',emissiveIntensity:.65}),
   lace:new THREE.MeshStandardMaterial({color:'#eee8dd',roughness:.92,side:THREE.DoubleSide,transparent:true,alphaTest:.3}),
   greenSofa:standard('#657044',.94,{bumpMap:fabric,bumpScale:.002}),barstool:new THREE.MeshPhysicalMaterial({color:'#914b28',roughness:.89,normalMap:textures.velvetNormal,normalScale:new THREE.Vector2(.28,.28),roughnessMap:textures.velvetRough,sheen:.75,sheenColor:'#bc784e'}),
@@ -193,7 +224,7 @@ export async function createHall(renderer){
  m.glass.userData.venueGlass=true;
  const floralBases=[m.flowerWhite,m.flowerPink,m.flowerGreen];
  const flowerMaterials=floralBases.flatMap((base,category)=>Array.from({length:4},()=>({material:base.clone(),category})));
- let flowerSlot=0,flowerMode='current',presidium='original',tableDecor='flowers';
+ let flowerSlot=0,flowerMode='current',presidium='original',tableDecor='flowers',tableDesign='original';
  function floralMaterial(base){const category=Math.max(0,floralBases.indexOf(base));return flowerMaterials[category*4+(flowerSlot++%4)].material;}
  const dopamine=['#f34983','#ff8d36','#f4ca35','#a574d1','#dd4772','#f6a75a','#a6be63','#c27fbd'];
  function updateFlowers(){const p=palettes[style];flowerMaterials.forEach(({material,category},i)=>material.color.set(flowerMode==='dopamine'?dopamine[i%dopamine.length]:category===0?(p.white||'#fffdf5'):category===1?p.pink:p.green));}
@@ -251,10 +282,7 @@ export async function createHall(renderer){
   }
  }
  const facadeGeo=new THREE.ExtrudeGeometry(facade,{depth:.16,bevelEnabled:false,curveSegments:24});mesh(facadeGeo,m.wall,room,0,0,9.99).userData.shadow=true;
- // Soft scenery beyond the windows is intentionally secondary to the interior.
- const outside=group(scene);const sky=box(24,8,.1,new THREE.MeshBasicMaterial({color:'#d1dcd6'}),outside,8,3,11.3);
- box(24,.25,5,new THREE.MeshBasicMaterial({color:'#a4ac91'}),outside,8,-.14,12.2);
- for(let i=0;i<16;i++){const x=-1+i*1.3;sphere(.33,1.4+random()*.3,.35,standard('#7b8d74'),outside,x,.5,12.1);}
+ const exterior=await createExterior(textureLoader),outside=exterior.root;scene.add(outside);
 
  for(const c of columns){
   mesh(cylinder(.36,.36,.15,32),m.trim,planWalls,c.x,.075,c.z);
@@ -319,6 +347,10 @@ export async function createHall(renderer){
  const lens=mesh(cylinder(.038,.038,.03,16),m.dark,ceiling,13.01,3.05,6.55);lens.rotation.z=Math.PI/2;
 
  // Coffered ceiling, continuous cove strips, vent grilles and suspended fittings.
+ // Close all the rear wall recesses too: otherwise the exterior sky leaks through
+ // the missing ceiling above the long-table and television projections.
+ const completeCeiling=floorGeo.clone();for(let i=0;i<completeCeiling.index.count;i+=3){const a=completeCeiling.index.getX(i);completeCeiling.index.setX(i,completeCeiling.index.getX(i+1));completeCeiling.index.setX(i+1,a);}completeCeiling.computeVertexNormals();mesh(completeCeiling,m.ceiling,ceiling,0,3.455,0);
+ box(16.74,.06,10,m.ceiling,ceiling,8.37,3.52,5);
  box(16.74,.12,6.5,m.ceiling,ceiling,8.37,3.51,6.75);
  box(5.2,.12,4,m.ceiling,ceiling,14.1,3.51,2);
  for(const [a,b] of [[.2,4.4],[4.6,8.6],[8.8,12.7],[12.9,16.5]]){
@@ -333,10 +365,20 @@ export async function createHall(renderer){
  }
  const chandelierMaterials=[m.gold,m.glow];
  function ringLight(parent,x,y,z,r,phase){
-  const points=[];
-  for(let i=0;i<64;i++){const t=i/64*Math.PI*2;points.push([x+Math.cos(t)*r,y+.024*Math.sin(t*5+phase),z+Math.sin(t)*r*.88]);}
-  tube(points,.022,m.gold,parent,true);tube(points.map(p=>[p[0],p[1]-.019,p[2]]),.012,m.glow,parent,true);
-  for(let i=0;i<3;i++){const t=i/3*Math.PI*2+.5;rod([x+Math.cos(t)*r,y+.02,z+Math.sin(t)*r*.88],[x+Math.cos(t)*r,3.40,z+Math.sin(t)*r*.88],.002,m.gold,parent);}
+  // Flat polished circular bands, not a thick wavy tube. The source photos
+  // show fine scalloped luminous filaments underneath an otherwise level ring.
+  const bandShape=new THREE.Shape();bandShape.absarc(0,0,r+.011,0,Math.PI*2,false);
+  const hole=new THREE.Path();hole.absarc(0,0,r-.011,0,Math.PI*2,true);bandShape.holes.push(hole);
+  const band=mesh(geometry('ring-band-'+r,()=>new THREE.ExtrudeGeometry(bandShape,{depth:.027,bevelEnabled:true,bevelThickness:.0015,bevelSize:.0015,bevelSegments:1,curveSegments:64})),m.gold,parent,x,y,z);band.rotation.x=Math.PI/2;
+  const led=mesh(geometry('ring-led-'+r,()=>new THREE.RingGeometry(r-.009,r+.009,128)),m.glow,parent,x,y-.030,z);led.rotation.x=Math.PI/2;
+  for(let k=0;k<3;k++){
+   const a=k/3*Math.PI*2+phase;
+   for(let strand=0;strand<4;strand++){
+    const points=Array.from({length:17},(_,j)=>{const u=j/16,t=a+(u-.5)*.65;return[x+Math.cos(t)*r,y-.03-(.012+strand*.008)*Math.sin(u*Math.PI),z+Math.sin(t)*r];});
+    tube(points,.0012,m.glow,parent);
+   }
+  }
+  for(let i=0;i<3;i++){const t=i/3*Math.PI*2+.5;rod([x+Math.cos(t)*r,y+.02,z+Math.sin(t)*r],[x+Math.cos(t)*r,3.40,z+Math.sin(t)*r],.0013,m.silver,parent);}
  }
  for(const x of [2.3,6.5,10.7,14.7]){
   const g=group(lightsVisual);mesh(cylinder(.12,.12,.025,24),m.gold,g,x,3.41,6.63);
@@ -367,7 +409,7 @@ export async function createHall(renderer){
   if(worldObstacle)chairObstacles.push({kind:'circle',x,z,r:.23});
   return g;
  }
- const napkinGeo=foldedNapkin();
+ const napkinGeo=foldedNapkin(),photoNapkinGeo=drapedNapkin();
  const glassProfile=[[0,0],[.024,0],[.029,.002],[.03,.004],[.028,.006],[.006,.009],[.003,.015],[.003,.078],[.007,.085],[.023,.099],[.036,.126],[.04,.151],[.036,.177],[.031,.193],[.0295,.193],[.0345,.177],[.0385,.151],[.0345,.127],[.021,.101],[.005,.087],[0,.085]].map(p=>new THREE.Vector2(...p));
  const glassGeo=geometry('wineglass',()=>new THREE.LatheGeometry(glassProfile,24));
  function wineglass(parent,x,y,z,scale=1){
@@ -378,13 +420,13 @@ export async function createHall(renderer){
  for(let row=0;row<2;row++)for(let i=0;i<14;i++){
   const glass=group(bar,-1.31+i*.2,1.87,-.14-row*.18);glass.rotation.x=Math.PI;wineglass(glass,0,0,0,.88);
  }
- function placeSetting(parent,x,z,angle=0){
+ function placeSetting(parent,x,z,angle=0,photo=false){
   const g=group(parent,x,.778,z,angle);
-  mesh(cylinder(.148,.147,.004,40),m.gold,g,0,0,0);mesh(cylinder(.13,.126,.009,40),m.ceramic,g,0,.008,0);
+  mesh(cylinder(.148,.147,.004,40),photo?m.silver:m.gold,g,0,0,0);mesh(cylinder(.13,.126,.009,40),m.ceramic,g,0,.008,0);
   mesh(cylinder(.101,.105,.003,40),m.plateInner,g,0,.013,0);
   for(const r of [.111,.116,.121,.126]){const ridge=mesh(ring(r,.0009),m.ceramic,g,0,.014,0);ridge.rotation.x=Math.PI/2;}
   const rim=mesh(ring(.12,.003),m.ceramic,g,0,.014,0);rim.rotation.x=Math.PI/2;
-  mesh(napkinGeo,m.napkin,g,0,.025,.015);
+  mesh(photo?photoNapkinGeo:napkinGeo,m.napkin,g,0,photo?0:.025,.015);
   for(const x of [-.175,.175]){
    rod([x,.015,-.08],[x,.015,.09],.004,m.silver,g);
    if(x<0)for(let i=0;i<4;i++)rod([x-.009+i*.006,.015,-.12],[x-.009+i*.006,.015,-.075],.0017,m.silver,g);
@@ -441,6 +483,7 @@ export async function createHall(renderer){
   const rim=mesh(ring(.025,.0015),m.glassRim,parent,x,y+height,z);rim.rotation.x=Math.PI/2;
  }
  function flowers(parent,x,y,z,reference=false){
+  if(tableDesign==='photo'){photoFlowers(parent,x,y,z);return;}
   const g=group(parent,x,y,z);
   const count=3;
   for(let v=0;v<count;v++){
@@ -454,11 +497,33 @@ export async function createHall(renderer){
   }
  }
 
+ const heartGeo=anthuriumPetal();
+ function photoFlowers(parent,x,y,z){
+  const g=group(parent,x,y,z);
+  const base=mesh(cylinder(.18,.18,.005,40),m.mirror,g,0,.004,0);
+  const profile=[[0,0],[.050,.005],[.062,.065],[.056,.16],[.035,.22],[.032,.235]].map(p=>new THREE.Vector2(...p));
+  mesh(geometry('photo-vase',()=>new THREE.LatheGeometry(profile,24)),m.glass,g,0,.008,0);
+  const rim=mesh(ring(.032,.0013),m.glassRim,g,0,.244,0);rim.rotation.x=Math.PI/2;
+  for(let i=0;i<5;i++){
+   const a=i*2.4,fx=Math.sin(a)*(.085+i*.012),fz=Math.cos(a)*(.08+i*.01),fy=.36+(i%3)*.065;
+   flower(g,fx,fy,fz,i===1?m.flowerWhite:i===4?m.flowerGreen:m.flowerPink,1.0,a);
+  }
+  for(let i=0;i<3;i++){
+   const a=i*2.35+.4,fx=Math.sin(a)*.16,fz=Math.cos(a)*.13,fy=.35+i*.065;
+   rod([0,.02,0],[fx,fy,fz],.0018,m.stem,g);
+   const bloom=group(g,fx,fy,fz,a);bloom.rotation.x=-.55;
+   mesh(heartGeo,floralMaterial(i===2?m.flowerGreen:m.flowerPink),bloom);
+   rod([0,0,.017],[0,.061,.047],.0028,m.pollen,bloom);
+  }
+  for(let i=0;i<5;i++){const a=i*2.4;const leaf=mesh(leafGeo,m.leaf,g,Math.sin(a)*.07,.19,Math.cos(a)*.06);leaf.rotation.set(.5,a,(i-2)*.22);leaf.scale.set(1.2,1.45,1.2);}
+ }
+
 
  // Wedding backdrop, modelled in its own local frame: +z faces the room.
  const stage=group(decor,.16,0,headTable.z,Math.PI/2);
  const referenceDrape=group(draperyReference,.16,0,headTable.z,Math.PI/2);
  const newDrape=group(draperyNew,.16,0,headTable.z,Math.PI/2);
+ const pistachioDrape=group(draperyPistachio,.16,0,headTable.z,Math.PI/2);
  mesh(pleatedPlane(4.65,2.94,48,.035),m.backdrop,stage,0,1.47,0);
  rod([-2.35,2.97,0],[2.35,2.97,0],.018,m.gold,stage);
  // Softly lit fabric: retain the detailed folds without a jagged sun-shadow
@@ -549,9 +614,25 @@ export async function createHall(renderer){
  }
  for(const [x,z,r] of [[-1.48,1.15,.11],[-1.29,1.18,.075],[1.46,1.16,.10]])mesh(geometry('mirror-ball',()=>new THREE.SphereGeometry(1,24,16)),m.silver,newDrape,x,r+.014,z,r,r,r);
 
+ // Third composition follows the milk/pistachio photograph: full-width gathered
+ // upper fabric, a high central gather, two middle gathers and low outer falls.
+ for(const side of [-1,1]){
+  mesh(gatheredFestoon(side),m.drape,pistachioDrape);
+  mesh(gatheredFestoon(side,true),m.drape,pistachioDrape);
+  const tail=mesh(pleatedPlane(.30,1.12,5,.028),m.drape,pistachioDrape,side*2.20,.56,.17);tail.rotation.z=side*.025;
+  mesh(pooledFabric(.62,.46),m.drape,pistachioDrape,side*2.16,.012,.24);
+  for(const [x,y] of [[1.57,1.78],[2.27,1.07]])mesh(fabricGather(),m.drape,pistachioDrape,side*x,y,.25);
+ }
+ mesh(fabricGather(),m.drape,pistachioDrape,0,2.87,.25,1.3,1.3,1.3);
+ mesh(gatheredTableFront(1.86,.75),m.cloth,pistachioDrape,0,.012,1.309).userData.shadow=true;
+ mesh(tableSwag(1.86),m.cloth,pistachioDrape,0,.005,1.34).userData.shadow=true;
+ mesh(pooledFabric(2.08,.45),m.cloth,pistachioDrape,0,.012,1.43).userData.shadow=true;
+ // Small reflective bases stay beneath the transparent table vases.
+ for(const side of [-1,1]){const base=mesh(cylinder(.13,.13,.005,32),m.mirror,pistachioDrape,side*.67,.783,1.02);}
+
  // Subtle contact shadows keep furniture grounded without moving lights.
  const shadowCanvas=document.createElement('canvas');shadowCanvas.width=shadowCanvas.height=64;const sc=shadowCanvas.getContext('2d');
- const gradient=sc.createRadialGradient(32,32,3,32,32,32);gradient.addColorStop(0,'rgba(18,14,9,.48)');gradient.addColorStop(.6,'rgba(18,14,9,.20)');gradient.addColorStop(1,'rgba(18,14,9,0)');sc.fillStyle=gradient;sc.fillRect(0,0,64,64);
+ const gradient=sc.createRadialGradient(32,32,3,32,32,32);gradient.addColorStop(0,'rgba(18,14,9,.15)');gradient.addColorStop(.6,'rgba(18,14,9,.06)');gradient.addColorStop(1,'rgba(18,14,9,0)');sc.fillStyle=gradient;sc.fillRect(0,0,64,64);
  const shadowMap=new THREE.CanvasTexture(shadowCanvas),shadowMaterial=new THREE.MeshBasicMaterial({map:shadowMap,transparent:true,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-1});
  const shadows=group(scene);
  for(const t of [{x:headTable.x,z:headTable.z}]){const s=mesh(geometry('shadowplane',()=>new THREE.PlaneGeometry(1,1)),shadowMaterial,shadows,t.x,.004,t.z,2.05,2.05,1);s.rotation.x=-Math.PI/2;}
@@ -592,8 +673,8 @@ export async function createHall(renderer){
    for(const c of t.chairs){
     const angle=t.type==='long'?(c.z<t.z?Math.PI:0):Math.atan2(c.x-t.x,c.z-t.z);
     chair(root,c.x-t.x,c.z-t.z,angle+Math.PI,false);
-    if(t.type==='long')placeSetting(root,c.x-t.x,c.z<t.z?-.19:.19,c.z<t.z?0:Math.PI);
-    else placeSetting(root,Math.sin(angle)*.44,Math.cos(angle)*.44,-angle);
+    if(t.type==='long')placeSetting(root,c.x-t.x,c.z<t.z?-.19:.19,c.z<t.z?Math.PI:0,tableDesign==='photo');
+    else placeSetting(root,Math.sin(angle)*.44,Math.cos(angle)*.44,tableDesign==='photo'?angle:-angle,tableDesign==='photo');
    }
    const floral=group(flowersRef);floral.userData.tableId=t.id;
    if(t.type==='long')for(const x of [-.8,.75])flowers(floral,t.x+x,.779,t.z,true);
@@ -606,7 +687,7 @@ export async function createHall(renderer){
    for(const c of t.chairs)contact(c.x,c.z,.83,.83);
   }
   for(const root of [guestSeating,flowersRef,guestCandles,guestShadows])instanceStatic(root);
-  refreshChairObstacles();seed=previousSeed;renderer.shadowMap.needsUpdate=true;
+  refreshChairObstacles();seed=previousSeed;renderer.shadowMap.needsUpdate=true;contactShadows?.invalidate();
  }
  rebuildTables();
  const selection=mesh(new THREE.RingGeometry(.75,.80,48),new THREE.MeshBasicMaterial({color:'#c17743',side:THREE.DoubleSide,transparent:true,opacity:.9,depthTest:false}),scene,0,.795,0);selection.rotation.x=-Math.PI/2;selection.renderOrder=5;selection.visible=false;let selectedTable=null;
@@ -618,7 +699,7 @@ export async function createHall(renderer){
    o.userData.tableIds?.forEach((tableId,i)=>{if(tableId!==id)return;o.getMatrixAt(i,matrix);matrix.elements[12]+=dx;matrix.elements[14]+=dz;o.setMatrixAt(i,matrix);changed=true;});
    if(changed){o.instanceMatrix.needsUpdate=true;o.computeBoundingSphere();}
   });
-  refreshChairObstacles();selectTable(selectedTable);renderer.shadowMap.needsUpdate=true;
+  refreshChairObstacles();selectTable(selectedTable);renderer.shadowMap.needsUpdate=true;contactShadows?.invalidate();
  }
 
  const ambient=new THREE.HemisphereLight('#edf0f3','#63594b',.24);scene.add(ambient);
@@ -642,14 +723,15 @@ export async function createHall(renderer){
   const light=new THREE.PointLight('#ffe8d0',1.2,4,2);light.position.set(x,2.63,9.02);scene.add(light);return light;
  });
 
- for(const root of [room,ceiling,lightsVisual,seating,decor,flowersSubtle,referenceExtras,draperyReference,draperyNew,presidiumFlowersOriginal,presidiumFlowersNew,planWalls,outside,shadows])instanceStatic(root);
+ mergeStatic(lightsVisual);
+ for(const root of [room,ceiling,lightsVisual,seating,decor,flowersSubtle,referenceExtras,draperyReference,draperyNew,draperyPistachio,presidiumFlowersOriginal,presidiumFlowersNew,planWalls,outside,shadows])instanceStatic(root);
  let style='reference',plan=false,decorVisible=true,lightingMode='day',lightingInitialized=false;
  const reflectionEnvironments=new Map();
  function updateEnvironment(value){
   if(!irradiance||plan)return;
-  const key=value+'|'+style+'|'+presidium+'|'+tableDecor;
+  const key=value+'|'+style+'|'+presidium+'|'+tableDecor+'|'+tableDesign;
   if(!reflectionEnvironments.has(key)){
-   const target=new THREE.WebGLCubeRenderTarget(128,{type:THREE.HalfFloatType});
+   const target=new THREE.WebGLCubeRenderTarget(256,{type:THREE.HalfFloatType});
    const probe=new THREE.CubeCamera(.08,45,target);probe.position.set(8.1,1.7,6.7);
    const visibility=mirrors.map(o=>o.visible);mirrors.forEach(o=>o.visible=false);
    const oldEnvironment=scene.environment;scene.environment=env.texture;
@@ -662,10 +744,10 @@ export async function createHall(renderer){
   if(reflectionEnvironments.size>6){const oldest=reflectionEnvironments.keys().next().value;if(oldest!==key){reflectionEnvironments.get(oldest).dispose();reflectionEnvironments.delete(oldest);}}
  }
  function updateVisibility(){
-  selectTable(selectedTable);ceiling.visible=!plan;lightsVisual.visible=!plan;room.visible=!plan;outside.visible=!plan;planWalls.visible=plan;
+  selectTable(selectedTable);ceiling.visible=!plan;lightsVisual.visible=!plan;room.visible=!plan;outside.visible=!plan;planWalls.visible=plan;contactShadows?.setPlan(plan);
   decor.visible=decorVisible;flowersRef.visible=decorVisible&&tableDecor==='flowers';guestCandles.visible=decorVisible&&tableDecor==='candles';flowersSubtle.visible=false;referenceExtras.visible=decorVisible&&presidium==='original';
   draperyReference.visible=presidiumFlowersOriginal.visible=decorVisible&&presidium==='original';
-  draperyNew.visible=presidiumFlowersNew.visible=decorVisible&&presidium==='new';
+  draperyNew.visible=decorVisible&&presidium==='new';draperyPistachio.visible=decorVisible&&presidium==='pistachio';presidiumFlowersNew.visible=decorVisible&&presidium!=='original';
  }
  function setStyle(value){
   if(!palettes[value])return;style=value;const p=palettes[value];
@@ -682,12 +764,12 @@ export async function createHall(renderer){
   };
   if(!settings[value])return;lightingMode=value;const p=settings[value],night=value==='lamps'||value==='evening';scene.userData.evening=night;
   // Keep light counts fixed: switching modes must not rebuild all GPU shaders.
-  ambient.intensity=irradiance ? .055 : p.ambient;ambient.color.set(night?'#ffe5c9':'#edf0f3');sun.intensity=irradiance?p.sun*.65:p.sun;
-  irradiance?.setLighting(value);
+  ambient.intensity=irradiance ? .035 : p.ambient;ambient.color.set(night?'#ffe5c9':'#edf0f3');sun.intensity=irradiance?p.sun*3:p.sun;
+  irradiance?.setLighting(value);contactShadows?.setLighting(value);
   windowLights.forEach(light=>{light.intensity=p.windows*light.userData.strength*(irradiance?.3:1);});
   chandelierLights.forEach(light=>{light.intensity=p.lamps*(irradiance?.35:1);});
   pendantLights.forEach(light=>{light.intensity=p.pendants;});
-  m.window.color.set(night?'#667d89':'#dbe8e7');sky.material.color.set(night?'#344453':'#d1dcd6');
+  m.window.color.set(night?'#667d89':'#dbe8e7');exterior.setLighting(value);scene.background.set(night?'#283340':'#b4d9e2');
   m.glow.color.set(value==='windows'?'#89857c':night?'#ffe0b9':'#fff0d5');if(value!=='windows')m.glow.color.multiplyScalar(3.2);m.shade.emissiveIntensity=value==='windows'?0:night?.8:.48;scene.environmentIntensity=irradiance ? .40 : p.environment;
   renderer.toneMappingExposure=p.exposure;renderer.shadowMap.needsUpdate=true;
   lightingInitialized=true;updateEnvironment(value);
@@ -710,17 +792,21 @@ export async function createHall(renderer){
   // diffuse field; the remaining local sources require no per-pixel light loop.
   for(const light of [...windowLights.filter((_,i)=>[1,3,4].includes(i)),...pendantLights]){light.removeFromParent();light.target?.removeFromParent();}
  }catch(error){console.warn('Используется обычное освещение:',error.message);}
+ contactShadows=createContactShadows(renderer,scene,()=>[seating,guestSeating,decor,draperyReference,draperyNew,draperyPistachio]);
+ scene.userData.updateContactShadows=()=>contactShadows.update();
  setStyle('reference');
  return {scene,chairObstacles,materials:m,setStyle,setLighting,setQuality,rebuildTables,translateTable,selectTable,
-  setPresidium(value){if(!['original','new'].includes(value))return;presidium=value;updateVisibility();renderer.shadowMap.needsUpdate=true;if(lightingInitialized)updateEnvironment(lightingMode);},
+  setPresidium(value){if(!['original','new','pistachio'].includes(value))return;presidium=value;updateVisibility();contactShadows?.invalidate();renderer.shadowMap.needsUpdate=true;if(lightingInitialized)updateEnvironment(lightingMode);},
   setFlowers(value){if(!['current','dopamine'].includes(value))return;flowerMode=value;updateFlowers();},
   setTableDecor(value){if(!['flowers','candles'].includes(value))return;tableDecor=value;updateVisibility();renderer.shadowMap.needsUpdate=true;if(lightingInitialized)updateEnvironment(lightingMode);},
+  setTableDesign(value){if(!['original','photo'].includes(value)||value===tableDesign)return;tableDesign=value;rebuildTables();updateVisibility();if(lightingInitialized)updateEnvironment(lightingMode);},
+  applyPhotoPreset(){presidium='pistachio';tableDecor='flowers';flowerMode='current';if(tableDesign!=='photo'){tableDesign='photo';rebuildTables();}contactShadows?.invalidate();setStyle('milk');},
   flowerColors:()=>flowerMaterials.map(({material})=>'#'+material.color.getHexString()),
-  lightSources:()=>({mode:lightingMode,windows:sun.intensity,windowAreas:windowLights.map(light=>light.intensity),lamps:chandelierLights.map(light=>light.intensity),pendants:pendantLights.map(light=>light.intensity),exposure:renderer.toneMappingExposure,mirrorGroups:mirrors.length,irradiance:irradiance?.info()||null}),
-  setPlan(value){plan=value;updateVisibility();if(!plan&&lightingInitialized)updateEnvironment(lightingMode);},setDecor(value){decorVisible=value;updateVisibility();},
-  stats(){let instances=0,drawObjects=0,modelTriangles=0,flowerTriangles=0;const floral=new Set([m.flowerWhite,m.flowerPink,m.flowerGreen,m.pollen,m.leaf,m.stem,...flowerMaterials.map(f=>f.material)]);scene.traverse(o=>{if(o.isInstancedMesh){instances+=o.count;drawObjects++;}if(o.isMesh){const n=(o.geometry.index?.count||o.geometry.attributes.position.count)/3*(o.isInstancedMesh?o.count:1);modelTriangles+=n;if(floral.has(o.material))flowerTriangles+=n;}});return{seats:seatCount(),guestChairs:chairCount,instances,drawObjects,modelTriangles,flowerTriangles,style,presidium,flowerMode,tableDecor,bar:{x:9.88,z:3.12},television:{x:5.8,z:3.99},musicStage};},
+  lightSources:()=>({mode:lightingMode,windows:sun.intensity,windowAreas:windowLights.map(light=>light.intensity),lamps:chandelierLights.map(light=>light.intensity),pendants:pendantLights.map(light=>light.intensity),exposure:renderer.toneMappingExposure,mirrorGroups:mirrors.length,exterior:exterior.info(),contactShadows:contactShadows.info(),irradiance:irradiance?.info()||null}),
+  setPlan(value){plan=value;updateVisibility();if(!plan&&lightingInitialized)updateEnvironment(lightingMode);},setDecor(value){decorVisible=value;updateVisibility();contactShadows?.invalidate();},
+  stats(){let instances=0,drawObjects=0,modelTriangles=0,flowerTriangles=0;const floral=new Set([m.flowerWhite,m.flowerPink,m.flowerGreen,m.pollen,m.leaf,m.stem,...flowerMaterials.map(f=>f.material)]);scene.traverse(o=>{if(o.isInstancedMesh){instances+=o.count;drawObjects++;}if(o.isMesh){const n=(o.geometry.index?.count||o.geometry.attributes.position.count)/3*(o.isInstancedMesh?o.count:1);modelTriangles+=n;if(floral.has(o.material))flowerTriangles+=n;}});return{seats:seatCount(),guestChairs:chairCount,instances,drawObjects,modelTriangles,flowerTriangles,style,presidium,flowerMode,tableDecor,tableDesign,bar:{x:9.88,z:3.12},television:{x:5.8,z:3.99},musicStage};},
   geometrySignature(){scene.updateMatrixWorld(true);let hash=2166136261;const push=value=>{const s=String(value);for(let i=0;i<s.length;i++)hash=Math.imul(hash^s.charCodeAt(i),16777619);};scene.traverseVisible(o=>{if(!o.isMesh)return;push(o.geometry.id);push(o.count||1);for(const v of o.matrixWorld.elements)push(v.toFixed(5));if(o.isInstancedMesh)for(const v of o.instanceMatrix.array)push(v.toFixed(5));});return(hash>>>0).toString(16);},
-  dispose(){env.dispose();irradiance?.dispose();reflectionEnvironments.forEach(t=>t.dispose());},
+  dispose(){env.dispose();irradiance?.dispose();contactShadows?.dispose();reflectionEnvironments.forEach(t=>t.dispose());},
  };
 }
 
