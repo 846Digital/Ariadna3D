@@ -1,5 +1,5 @@
 import * as THREE from './vendor/three.module.min.js';
-import {EffectComposer,RenderPass,GTAOPass,OutputPass,ShaderPass} from './vendor/rendering.module.js?v=20261117-9';
+import {EffectComposer,RenderPass,GTAOPass,OutputPass,ShaderPass} from './vendor/rendering.module.js?v=20261118-10';
 
 export function createPresentation(renderer,scene,camera){
  const target=new THREE.WebGLRenderTarget(1,1,{type:THREE.HalfFloatType,samples:4});

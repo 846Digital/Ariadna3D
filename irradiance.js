@@ -1,68 +1,51 @@
 import * as THREE from './vendor/three.module.min.js';
 
-// Six-bounce architectural radiosity, sampled in world space. Furniture is never
-// baked into this volume: editing its instances samples lighting at the new pose.
-const NX=48,NY=14,NZ=32,VALUES=NX*4*NY*NZ*4;
+// Cycles traces the fixed room offline. Its two lightmap bases are independent
+// of movable furniture. Directional probes light furniture at its current pose.
+const NX=18,NY=6,NZ=12,VALUES=NX*4*NY*NZ*4;
 const declarations=`
 uniform highp sampler3D venueLight;
-uniform sampler2D venueSurface;
+uniform sampler2D venueLampMap;
+uniform vec2 venueMix;
 uniform float venueBounceStrength;
 varying vec3 vVenueWorld;
 vec3 venueIrradiance(vec3 normalWorld){
- vec3 result=vec3(0.);
- if((vVenueWorld.y<.035&&normalWorld.y>.8)||(vVenueWorld.y>3.30&&normalWorld.y<-.7)){
-  vec2 uv=clamp(vVenueWorld.xz/vec2(16.74,10.),0.,1.);
-  uv=uv*vec2(191./192.,111./112.)+vec2(.5/192.,.5/112.);
-  uv.y=uv.y*.5+(vVenueWorld.y>3.30?.5:0.);
-  result=texture2D(venueSurface,uv).rgb;
- }else{
  vec3 p=clamp((vVenueWorld-vec3(.06))/(vec3(16.68,3.39,9.94)-vec3(.06)),0.,1.);
- // Each coefficient occupies one contiguous x slab; half-texel insets prevent
- // trilinear filtering from mixing adjacent spherical-harmonic coefficients.
- p=p*vec3(47./48.,13./14.,31./32.)+vec3(.5/48.,.5/14.,.5/32.);
- p.x*=.25;
- vec3 c0=texture(venueLight,p).rgb;
- p.x+=.25;
- vec3 cx=texture(venueLight,p).rgb;
- p.x+=.25;
- vec3 cy=texture(venueLight,p).rgb;
- p.x+=.25;
- vec3 cz=texture(venueLight,p).rgb;
- result=max(c0+cx*normalWorld.x+cy*normalWorld.y+cz*normalWorld.z,c0*.12);
- }
- return result*venueBounceStrength;
+ p=p*vec3(17./18.,5./6.,11./12.)+vec3(.5/18.,.5/6.,.5/12.);
+ p.x*=.25;vec3 c0=texture(venueLight,p).rgb;
+ p.x+=.25;vec3 cx=texture(venueLight,p).rgb;
+ p.x+=.25;vec3 cy=texture(venueLight,p).rgb;
+ p.x+=.25;vec3 cz=texture(venueLight,p).rgb;
+ return max(c0+cx*normalWorld.x+cy*normalWorld.y+cz*normalWorld.z,c0*.10)*venueBounceStrength;
 }`;
 
-export async function createIrradiance(){
- const response=await fetch('./assets/hall-irradiance.bin');
- if(!response.ok)throw new Error('Не загрузилось освещение зала');
- const buffer=await response.arrayBuffer();
- if(buffer.byteLength!==VALUES*2*2)throw new Error('Неполная карта освещения');
- const attached=new WeakSet(),cache=new Map(),volumeUniform={value:null},surfaceUniform={value:null},strengthUniform={value:.72};
- const surfaceResponse=await fetch('./assets/surface-irradiance.bin');if(!surfaceResponse.ok)throw new Error('Не загрузилось освещение поверхностей');
- const surfaceBuffer=await surfaceResponse.arrayBuffer(),surfaceValues=192*224*4;
- if(surfaceBuffer.byteLength!==surfaceValues*4)throw new Error('Неполная карта поверхностей');
- const decode=(buffer,count)=>[0,1].map(i=>Float32Array.from(new Uint16Array(buffer,i*count*2,count),THREE.DataUtils.fromHalfFloat));
- const volumeBases=decode(buffer,VALUES),surfaceBases=decode(surfaceBuffer,surfaceValues);
+export async function createIrradiance(renderer,authored){
+ const response=await fetch('./assets/hall-irradiance.bin?v=10');if(!response.ok)throw new Error('Не загрузилось освещение зала');
+ const buffer=await response.arrayBuffer();if(buffer.byteLength!==VALUES*4)throw new Error('Неполная карта освещения');
+ const bases=[0,1].map(i=>Float32Array.from(new Uint16Array(buffer,i*VALUES*2,VALUES),THREE.DataUtils.fromHalfFloat));
+ const attached=new WeakSet(),cache=new Map(),volumeUniform={value:null},strengthUniform={value:1},mixUniform={value:new THREE.Vector2(1,.58)};
+ const maps={};
+ await Promise.all(['room','ceiling','floor'].map(async tag=>{
+  const pair=await Promise.all(['day','lamps'].map(mode=>authored.compressed.loadAsync(`./assets/light-${tag}-${mode}.ktx2?v=10`)));
+  pair.forEach(t=>{t.channel=1;t.colorSpace=THREE.NoColorSpace;t.anisotropy=Math.min(4,renderer.capabilities.getMaxAnisotropy());});maps[tag]=pair;
+ }));
  const modes={day:[1,.58],windows:[1.15,0],lamps:[0,1.2],evening:[.035,1]};let weights=modes.day;
- const blend=(bases,weights)=>{const data=new Uint16Array(bases[0].length);for(let i=0;i<data.length;i++)data[i]=THREE.DataUtils.toHalfFloat(bases[0][i]*weights[0]+bases[1][i]*weights[1]);return data;};
  function setLighting(mode){
-  mode=modes[mode]?mode:'day';weights=modes[mode];
-  strengthUniform.value=mode==='day'?.72:mode==='windows'?.68:1;
+  mode=modes[mode]?mode:'day';weights=modes[mode];mixUniform.value.fromArray(weights);strengthUniform.value=1;
   if(!cache.has(mode)){
-   const volume=new THREE.Data3DTexture(blend(volumeBases,weights),NX*4,NY,NZ);volume.format=THREE.RGBAFormat;volume.type=THREE.HalfFloatType;volume.minFilter=volume.magFilter=THREE.LinearFilter;volume.unpackAlignment=1;volume.needsUpdate=true;
-   const surface=new THREE.DataTexture(blend(surfaceBases,weights),192,224,THREE.RGBAFormat,THREE.HalfFloatType);surface.minFilter=surface.magFilter=THREE.LinearFilter;surface.needsUpdate=true;
-   cache.set(mode,{volume,surface});
+   const data=new Uint16Array(VALUES);for(let i=0;i<VALUES;i++)data[i]=THREE.DataUtils.toHalfFloat(bases[0][i]*weights[0]+bases[1][i]*weights[1]);
+   const texture=new THREE.Data3DTexture(data,NX*4,NY,NZ);texture.format=THREE.RGBAFormat;texture.type=THREE.HalfFloatType;texture.minFilter=texture.magFilter=THREE.LinearFilter;texture.unpackAlignment=1;texture.needsUpdate=true;cache.set(mode,texture);
   }
-  const current=cache.get(mode);volumeUniform.value=current.volume;surfaceUniform.value=current.surface;
+  volumeUniform.value=cache.get(mode);
  }
  setLighting('day');
  return{
+  maps,
   attach(material){
-   if(!material?.isMeshStandardMaterial||attached.has(material))return;
-   attached.add(material);
+   if(!material?.isMeshStandardMaterial||attached.has(material))return;attached.add(material);
+   const lampUniform={value:material.userData.venueLampMap||maps.room[1]};
    material.onBeforeCompile=shader=>{
-    shader.uniforms.venueLight=volumeUniform;shader.uniforms.venueSurface=surfaceUniform;shader.uniforms.venueBounceStrength=strengthUniform;
+    shader.uniforms.venueLight=volumeUniform;shader.uniforms.venueBounceStrength=strengthUniform;shader.uniforms.venueMix=mixUniform;shader.uniforms.venueLampMap=lampUniform;
     shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nvarying vec3 vVenueWorld;');
     shader.vertexShader=shader.vertexShader.replace('#include <project_vertex>',`#include <project_vertex>
      vec4 venuePosition=vec4(transformed,1.);
@@ -72,18 +55,25 @@ export async function createIrradiance(){
      vVenueWorld=(modelMatrix*venuePosition).xyz;`);
     shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\n'+declarations);
     shader.fragmentShader=shader.fragmentShader.replace('#include <lights_fragment_begin>',`#include <lights_fragment_begin>
-     #if defined(RE_IndirectDiffuse)
+     #if defined(RE_IndirectDiffuse) && !defined(USE_LIGHTMAP)
       irradiance+=venueIrradiance(inverseTransformDirection(geometryNormal,viewMatrix));
      #endif`);
+    let chunks=THREE.ShaderChunk.lights_fragment_maps;
+    chunks=chunks.replace('vec4 lightMapTexel = texture2D( lightMap, vLightMapUv );',`vec4 dayLight=texture2D(lightMap,vLightMapUv);vec4 lampLight=texture2D(venueLampMap,vLightMapUv);
+     vec4 lightMapTexel=vec4((dayLight.rgb*dayLight.rgb*venueMix.x+lampLight.rgb*lampLight.rgb*venueMix.y)*16.*venueBounceStrength,1.);`);
+    // Diffuse environment is already traced into lightmaps/probes. The captured
+    // environment remains active for glass and rough/specular reflections.
+    chunks=chunks.replace('iblIrradiance += getIBLIrradiance( geometryNormal );','iblIrradiance += vec3(0.);');
+    shader.fragmentShader=shader.fragmentShader.replace('#include <lights_fragment_maps>',chunks);
     if(material.userData.venueGlass)shader.fragmentShader=shader.fragmentShader.replace('#include <opaque_fragment>',`#ifndef USE_TRANSMISSION
      diffuseColor.a*=.28+.72*pow(1.-abs(dot(normal,geometryViewDir)),3.);
      #endif
      #include <opaque_fragment>`);
    };
-   material.customProgramCacheKey=()=> 'venue-radiosity-v2'+(material.userData.venueGlass?'-glass':'');material.needsUpdate=true;
+   material.customProgramCacheKey=()=> 'venue-cycles-v1'+(material.lightMap?'-atlas':'-probe')+(material.userData.venueGlass?'-glass':'');material.needsUpdate=true;
   },
   setLighting,
-  info:()=>({bounces:6,probes:NX*NY*NZ,furnitureBaked:false,mix:[...weights]}),
-  dispose(){cache.forEach(({volume,surface})=>{volume.dispose();surface.dispose();});},
+  info:()=>({engine:'Cycles',bounces:5,probes:NX*NY*NZ,surfaceAtlases:3,furnitureBaked:false,mix:[...weights]}),
+  dispose(){cache.forEach(t=>t.dispose());Object.values(maps).flat().forEach(t=>t.dispose());},
  };
 }

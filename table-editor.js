@@ -1,5 +1,5 @@
-import {guestTables,serializeLayout,restoreLayout,resetLayout,moveTable,changeChairs,canPlace,addTable,tableObstacle,seatCount} from './table-layout.js?v=20261117-9';
-import {updateTableObstacles} from './layout.js?v=20261117-9';
+import {guestTables,serializeLayout,restoreLayout,resetLayout,moveTable,changeChairs,canPlace,addTable,tableObstacle,seatCount} from './table-layout.js?v=20261118-10';
+import {updateTableObstacles} from './layout.js?v=20261118-10';
 
 const $=id=>document.getElementById(id),storageKey='ariadna-seating-v1';
 export function loadSeating(){try{const saved=localStorage.getItem(storageKey);if(saved)restoreLayout(JSON.parse(saved));}catch{}updateTableObstacles(guestTables.map(tableObstacle));}

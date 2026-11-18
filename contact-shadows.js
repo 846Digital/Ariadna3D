@@ -10,7 +10,7 @@ export function createContactShadows(renderer,scene,getRoots){
  p=instanceMatrix*p;
  #endif
  vec4 world=modelMatrix*p;h=max(0.,world.y);gl_Position=projectionMatrix*viewMatrix*world;}`,
- fragmentShader:'varying float h;void main(){float a=.47*exp(-h*2.4);gl_FragColor=vec4(vec3(a),1.);}' });
+ fragmentShader:'varying float h;void main(){float a=.64*exp(-h*2.4);gl_FragColor=vec4(vec3(a),1.);}' });
  const camera=new THREE.OrthographicCamera(-8.37,8.37,5,-5,.001,1.25);camera.position.set(8.37,-.02,5);camera.up.set(0,0,1);camera.lookAt(8.37,1,5);
  const uniforms={map:{value:target.texture},strength:{value:1},texel:{value:new THREE.Vector2(1/2048,1/1224)}};
  const material=new THREE.ShaderMaterial({transparent:true,depthWrite:false,uniforms,vertexShader:'varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',fragmentShader:`uniform sampler2D map;uniform float strength;uniform vec2 texel;varying vec2 vUv;

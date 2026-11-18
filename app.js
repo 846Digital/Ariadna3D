@@ -1,7 +1,7 @@
-import {boundary,columns,headTable,views,canStand} from './layout.js?v=20261117-9';
+import {boundary,columns,headTable,views,canStand} from './layout.js?v=20261118-10';
 
-import {guestTables,seatCount} from './table-layout.js?v=20261117-9';
-import {createTableEditor,loadSeating} from './table-editor.js?v=20261117-9';
+import {guestTables,seatCount} from './table-layout.js?v=20261118-10';
+import {createTableEditor,loadSeating} from './table-editor.js?v=20261118-10';
 loadSeating();
 
 const $=id=>document.getElementById(id),canvas=$('scene');
@@ -71,7 +71,7 @@ const references={
  olive:['preview-olive.webp','Та же 3D-модель: оливковые ткани и шоколадные акценты','Олива и шоколад. Кадр из модели: меняются только цвета, геометрия и декор совпадают с исходным вариантом.'],
 };
 function selectReference(name){
- const [file,alt,caption]=references[name];$('reference-image').src='./assets/'+file+'?v=20261117-9';$('reference-image').alt=alt;$('reference-caption').textContent=caption;
+ const [file,alt,caption]=references[name];$('reference-image').src='./assets/'+file+'?v=20261118-10';$('reference-image').alt=alt;$('reference-caption').textContent=caption;
  for(const b of document.querySelectorAll('[data-reference]')){const active=b.dataset.reference===name;b.classList.toggle('selected',active);b.setAttribute('aria-pressed',String(active));}
 }
 for(const button of document.querySelectorAll('[data-reference]'))button.addEventListener('click',()=>selectReference(button.dataset.reference));
@@ -313,7 +313,7 @@ function frame(time){
 
 async function boot(){
  try{
-  const module=await import('./scene.js?v=20261117-9');THREE=module.THREE;
+  const module=await import('./scene.js?v=20261118-10');THREE=module.THREE;
   renderer=new THREE.WebGLRenderer({canvas,antialias:!coarse,alpha:false,powerPreference:'high-performance',preserveDrawingBuffer:true});
   renderer.debug.onShaderError=(gl,program,vertex,fragment)=>{const report={program:gl.getProgramInfoLog(program),vertex:gl.getShaderInfoLog(vertex),fragment:gl.getShaderInfoLog(fragment)};console.error(JSON.stringify(report));throw new Error('Графический процессор не смог подготовить рендер');};
   renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.12;
@@ -321,16 +321,18 @@ async function boot(){
   camera=new THREE.PerspectiveCamera(60,1,.045,70);planCamera=new THREE.OrthographicCamera(-10,10,6,-6,.1,80);planCamera.up.set(0,0,-1);planCamera.position.set(8.37,30,5);planCamera.lookAt(8.37,0,5);
   $('load-status').textContent='Расставляем мебель и свадебный декор';await new Promise(resolve=>requestAnimationFrame(resolve));
   $('load-status').textContent='Загружаем материалы тканей и камня';hall=await module.createHall(renderer);ready=true;setView('entrance');applyStyle(preferences.style,false);hall.setLighting(preferences.lighting);hall.setPresidium(preferences.presidium);hall.setFlowers(preferences.flowers);hall.setTableDecor(preferences.tableDecor);hall.setTableDesign(preferences.tableDesign);hall.setDecor(preferences.decor);updateQuality();
-  const graphics=await import('./render-still.js?v=20261117-9');renderStill=graphics.renderStill;presentation=graphics.createPresentation(renderer,hall.scene,camera);updateQuality();
+  const graphics=await import('./render-still.js?v=20261118-10');renderStill=graphics.renderStill;presentation=graphics.createPresentation(renderer,hall.scene,camera);updateQuality();
   renderer.shadowMap.needsUpdate=true;presentation.render(camera);drawMap();
   $('start-button').disabled=false;$('start-label').textContent='Войти в зал';$('load-status').textContent=coarse?'Управление касанием':'Управление мышью и клавиатурой';
   window.addEventListener('resize',resize);new ResizeObserver(resize).observe($('app'));
   canvas.addEventListener('webglcontextlost',event=>{event.preventDefault();failure('Графический контекст был потерян. Закройте лишние вкладки и обновите страницу.');});
   if(new URLSearchParams(location.search).has('qa'))window.__ARIADNA__={
+   exportBakeScene:()=>hall.exportBakeScene(),
    getState:()=>({ready,started,mode,position:{...position},yaw,pitch,preferences:{...preferences},...hall.stats(),lightSources:hall.lightSources(),presentation:presentation?.info?.(),drawCalls:renderer.info.render.calls,triangles:renderer.info.render.triangles,focus:document.activeElement?.id,keys:[...keys]}),
    setPose:(x,z,angle,tilt)=>{position.x=x;position.z=z;yaw=angle;pitch=tilt;orientCamera();dirty=true;},
    layout:()=>tableEditor.layout(),tablePoint:(id)=>{const t=guestTables.find(t=>t.id===id);if(!t)return null;const p=new THREE.Vector3(t.x,.78,t.z).project(planCamera);return{x:(p.x+1)*canvas.clientWidth/2,y:(1-p.y)*canvas.clientHeight/2};},canStand:(x,z)=>canStand(x,z,.16,hall.chairObstacles),setView,setMode,applyStyle,start,
    project:(x,y,z)=>{const p=new THREE.Vector3(x,y,z).project(mode==='plan'?planCamera:camera);return{x:(p.x+1)*canvas.clientWidth/2,y:(1-p.y)*canvas.clientHeight/2};},
+   authoredInfo:()=>hall.authoredInfo(),
    materials:()=>Object.fromEntries(['cloth','napkin','backdrop','drape','chair'].map(key=>[key,'#'+hall.materials[key].color.getHexString()])),
    flowerColors:()=>hall.flowerColors(),geometrySignature:()=>hall.geometrySignature(),gpu:()=>renderer.getContext().getParameter(renderer.getContext().getExtension('WEBGL_debug_renderer_info')?.UNMASKED_RENDERER_WEBGL||renderer.getContext().RENDERER),
    renderStill:async(options={})=>{renderJob=new AbortController();try{hall.setQuality('high');const blob=await renderStill(renderer,presentation,camera,options);return await new Promise(resolve=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.readAsDataURL(blob);});}finally{renderJob=null;updateQuality();dirty=true;}},

@@ -1,0 +1,20 @@
+{
+  "engine": "Blender 4.5 LTS / Cycles",
+  "diffuse_bounces": 5,
+  "samples": {
+    "room_day": 48,
+    "ceiling_day": 48,
+    "floor_day": 32,
+    "lamps": 32,
+    "probes": 32
+  },
+  "probes": 1296,
+  "furniture_baked": false,
+  "maps": {
+    "room": 3072,
+    "ceiling": 2048,
+    "floor": 2048
+  },
+  "denoiser": "Intel Open Image Denoise / RT HDR",
+  "encoding": "sqrt(irradiance / 16), linear RGB UASTC"
+}
